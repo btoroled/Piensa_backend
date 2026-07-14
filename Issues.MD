@@ -1,6 +1,7 @@
 # Piensa Homeschool — Backend Issues (Spec-Driven Development)
 
 **Spec fuente de verdad:** [`docs/specs/2026-07-14-piensa-backend-design.md`](docs/specs/2026-07-14-piensa-backend-design.md)
+**Lógica rescatada del proyecto anterior:** [`docs/legacy-rescue.md`](docs/legacy-rescue.md) — revisar antes de implementar ISSUE-14, 22, 23, 25 y 26.
 
 ## Reglas SDD (aplican a todos los issues)
 
