@@ -23,7 +23,9 @@
 | Issue | Estado | Responsable | Nota |
 |---|---|---|---|
 | ISSUE-01 Scaffolding | ✅ Completado | impl · review OK | mergeado a `main` (2026-07-14) · 8 tests verdes · criterios 3/3 · lint/typecheck/build OK |
-| ISSUE-02 … ISSUE-34 | ⚪ Pendiente | — | ver cuerpos abajo; respetar `Depende de:` |
+| ISSUE-02 Entorno Docker + validación de env | ✅ Completado | impl · review OK | PR #1 · mergeado a `main` (2026-07-14) · 23 tests verdes · criterios 3/3 · arranque sin `DATABASE_URL` → exit 1 sin stack |
+| ISSUE-03 Convenciones de API | ✅ Completado | impl · review OK | PR #2 · mergeado a `main` (2026-07-14) · 14 tests verdes · criterios 5/5 · auditoría de seguridad (x-request-id / SQL sensible sin filtración) |
+| ISSUE-04 … ISSUE-34 | ⚪ Pendiente | — | ver cuerpos abajo; respetar `Depende de:` |
 
 ---
 
@@ -78,6 +80,7 @@ Migración Prisma: `User` (id, email único, passwordHash, role `admin|parent`),
 **Criterios de aceptación:**
 - Credenciales válidas → tokens; inválidas → `UNAUTHORIZED` con el **mismo mensaje** exista o no el email (sin enumeración de usuarios).
 - El access token expira a los 15 minutos (test con clock falso).
+> Nota (de review-agent, ISSUE-03): Fastify usa `ajv` con `coerceTypes: true` por defecto, así que un `type: "string"`/`"number"` **no rechaza tipos incorrectos, los coacciona**. Validar IDs/credenciales con `format`/`pattern`, no solo `type`. Decidir antes de Milestone 1.
 
 ### ISSUE-07: Refresh con rotación
 **Spec:** §5 (Auth), §6 · **Depende de:** ISSUE-06
@@ -93,6 +96,7 @@ Migración Prisma: `User` (id, email único, passwordHash, role `admin|parent`),
 - PIN correcto de un hijo propio → token de alumno.
 - PIN de un perfil de **otra familia** → `FORBIDDEN` (pertenencia verificada contra BD).
 - 5 fallos consecutivos bloquean; el contador se resetea con un acierto tras el desbloqueo.
+> Nota (de review-agent, ISSUE-03): por `coerceTypes: true` de `ajv`, validar el PIN con `pattern: "^[0-9]{4}$"` (y los IDs con `format`/`pattern`), no con `type: "string"` a secas — de lo contrario tipos incorrectos se coaccionan en vez de rechazarse. Decidir antes de Milestone 1.
 
 ### ISSUE-09: Autorización por rol y pertenencia
 **Spec:** §6 · **Depende de:** ISSUE-06, ISSUE-08
