@@ -25,7 +25,8 @@
 | ISSUE-01 Scaffolding | ✅ Completado | impl · review OK | mergeado a `main` (2026-07-14) · 8 tests verdes · criterios 3/3 · lint/typecheck/build OK |
 | ISSUE-02 Entorno Docker + validación de env | ✅ Completado | impl · review OK | PR #1 · mergeado a `main` (2026-07-14) · 23 tests verdes · criterios 3/3 · arranque sin `DATABASE_URL` → exit 1 sin stack |
 | ISSUE-03 Convenciones de API | ✅ Completado | impl · review OK | PR #2 · mergeado a `main` (2026-07-14) · 14 tests verdes · criterios 5/5 · auditoría de seguridad (x-request-id / SQL sensible sin filtración) |
-| ISSUE-04 … ISSUE-34 | ⚪ Pendiente | — | ver cuerpos abajo; respetar `Depende de:` |
+| ISSUE-04 CI en GitHub Actions | ✅ Completado | impl · review OK | PR #3 · mergeado a `main` (2026-07-14) · CI verde · secuencia verde→rojo(test roto)→verde confirmada con `gh` · criterios 2/2 · nota no bloqueante: `actions/checkout@v4`+`setup-node@v4` avisan deprecación Node 20 (migrar a v5 a futuro) |
+| ISSUE-05 … ISSUE-34 | ⚪ Pendiente | — | ver cuerpos abajo; respetar `Depende de:` |
 
 ---
 
