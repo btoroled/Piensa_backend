@@ -15,6 +15,18 @@
 
 ---
 
+## Tablero de estado
+
+> Mantenido **únicamente por docs-agent** según los reportes del equipo. Última actualización: 2026-07-14.
+> Estados: ⚪ Pendiente · 🟡 En progreso · 🔵 En revisión · ✅ Completado · 🔴 Bloqueado
+
+| Issue | Estado | Responsable | Nota |
+|---|---|---|---|
+| ISSUE-01 Scaffolding | ✅ Completado | impl · review OK | mergeado a `main` (2026-07-14) · 8 tests verdes · criterios 3/3 · lint/typecheck/build OK |
+| ISSUE-02 … ISSUE-34 | ⚪ Pendiente | — | ver cuerpos abajo; respetar `Depende de:` |
+
+---
+
 ## Milestone 0 — Fundaciones del repo
 
 ### ISSUE-01: Scaffolding del backend
@@ -31,6 +43,7 @@ Crear el esqueleto del repo backend: TypeScript estricto, Fastify, Prisma inicia
 **Criterios de aceptación:**
 - `docker compose -f docker-compose.dev.yml up -d` + `npm run dev` funciona de cero en una máquina limpia.
 - Arrancar sin `DATABASE_URL` termina el proceso con mensaje claro, no con stack trace.
+> Nota (de ISSUE-01): `prisma validate` requiere `DATABASE_URL` en el entorno — sin ella falla con `P1012`. Incluir `DATABASE_URL` en `.env.example`.
 
 ### ISSUE-03: Convenciones transversales de API
 **Spec:** §5 (Convenciones), §6 (errores/logs) · **Depende de:** ISSUE-01
@@ -46,6 +59,7 @@ Workflow que en cada push/PR: instala dependencias, levanta PostgreSQL (service 
 **Criterios de aceptación:**
 - El workflow pasa en verde en el repo.
 - Un test roto hace fallar el workflow (verificado una vez y revertido).
+> Nota (de ISSUE-01): el workflow debe exportar `DATABASE_URL` en el entorno antes de correr cualquier comando `prisma` (validate/migrate); de lo contrario falla con `P1012`.
 
 ---
 
