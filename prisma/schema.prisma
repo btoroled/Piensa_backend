@@ -1,4 +1,7 @@
-// Modelo de datos de Piensa. Los modelos concretos se agregan desde ISSUE-05.
+// Modelo de datos de Piensa (Spec §4).
+// Personas: User → Family → StudentProfile. El catálogo, progreso y juego se
+// agregan en issues posteriores (ISSUE-12, ISSUE-19).
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -6,4 +9,74 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// Rol de la cuenta con credenciales (email + contraseña). Los alumnos no son
+// User: entran por PIN sobre un StudentProfile (Spec §2).
+enum UserRole {
+  admin
+  parent
+}
+
+// Estado de la familia. `suspended` corta el acceso de padre e hijos sin borrar
+// datos (suspensión manual, Spec §5). Efectividad inmediata se implementa en
+// ISSUE-10.
+enum FamilyStatus {
+  active
+  suspended
+}
+
+// Cuenta con credenciales: administrador de la plataforma o padre de familia.
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Familias cuyo padre es este User. Restrict: no se puede borrar un User que
+  // aún tiene familias asociadas.
+  families Family[]
+}
+
+// Familia: unidad de facturación/suspensión. Su padre es un User rol `parent`.
+model Family {
+  id           String       @id @default(uuid()) @db.Uuid
+  name         String
+  status       FamilyStatus @default(active)
+  adminNote    String?
+  parentUserId String       @db.Uuid
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // Borrar al User padre no debe huérfanar ni borrar en cascada su familia.
+  parentUser User @relation(fields: [parentUserId], references: [id], onDelete: Restrict)
+
+  students StudentProfile[]
+
+  @@index([parentUserId])
+}
+
+// Perfil de alumno dentro de una familia. No tiene credenciales: se autentica
+// con un PIN de 4 dígitos hasheado (Spec §2, §5).
+model StudentProfile {
+  id                String    @id @default(uuid()) @db.Uuid
+  familyId          String    @db.Uuid
+  name              String
+  avatar            String
+  pinHash           String
+  // Grado asignado. Nullable hasta que el admin lo asigne; la FK a Grade se
+  // agrega con el catálogo (ISSUE-12), por eso aquí es una columna suelta.
+  gradeId           String?   @db.Uuid
+  failedPinAttempts Int       @default(0)
+  pinLockedUntil    DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Restrict: borrar una Family con perfiles debe fallar, nunca huérfanar
+  // StudentProfiles (criterio de aceptación ISSUE-05).
+  family Family @relation(fields: [familyId], references: [id], onDelete: Restrict)
+
+  @@index([familyId])
 }
