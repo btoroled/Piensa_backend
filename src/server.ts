@@ -1,10 +1,22 @@
 import { buildApp } from "./app.js";
+import { EnvValidationError, loadEnv } from "./config/env.js";
+
+let env;
+try {
+  env = loadEnv();
+} catch (err) {
+  if (err instanceof EnvValidationError) {
+    // Mensaje claro para el operador; nunca un stack trace.
+    process.stderr.write(`[config] ${err.message}\n`);
+    process.exit(1);
+  }
+  throw err;
+}
 
 const app = buildApp({ logger: true });
-const port = Number(process.env.PORT ?? 3000);
 
 app
-  .listen({ port, host: "0.0.0.0" })
+  .listen({ port: env.PORT, host: "0.0.0.0" })
   .then((address) => {
     app.log.info(`Piensa backend escuchando en ${address}`);
   })

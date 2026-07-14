@@ -1,0 +1,30 @@
+# Entorno de desarrollo local (Spec §3).
+# PostgreSQL con volumen persistente, puerto acotado a localhost y una base de
+# datos separada para los tests. Levantar con:
+#   docker compose -f docker-compose.dev.yml up -d
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: piensa-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: piensa
+      POSTGRES_PASSWORD: piensa
+      POSTGRES_DB: piensa_dev
+    ports:
+      # Solo accesible desde la propia máquina, nunca expuesto a la red/Internet.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # Volumen nombrado => los datos persisten entre reinicios del contenedor.
+      - piensa_pgdata:/var/lib/postgresql/data
+      # Scripts de init: se ejecutan solo al crear el volumen por primera vez.
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U piensa -d piensa_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  piensa_pgdata:
+    name: piensa_pgdata
