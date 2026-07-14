@@ -1,0 +1,9 @@
+// Modelo de datos de Piensa. Los modelos concretos se agregan desde ISSUE-05.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

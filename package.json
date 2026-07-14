@@ -18,10 +18,12 @@
   },
   "license": "SEE LICENSE IN LICENSE.md",
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "fastify": "^5.10.0"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
+    "prisma": "^6.19.3",
     "tsx": "^4.23.1",
     "typescript": "^5.9.3",
     "vitest": "^3.2.7"
