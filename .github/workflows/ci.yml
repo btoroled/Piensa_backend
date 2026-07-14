@@ -1,0 +1,75 @@
+# Integración continua (Spec §7): en cada push y pull request instala
+# dependencias, levanta PostgreSQL, aplica migraciones de Prisma y corre
+# lint + build + test. Nada se despliega sin pasar en verde.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Cancela runs anteriores de la misma rama/PR para no gastar minutos de más.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Lint · Build · Test
+    runs-on: ubuntu-latest
+
+    # PostgreSQL como service container. El healthcheck evita correr los steps
+    # antes de que la base acepte conexiones.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: piensa
+          POSTGRES_PASSWORD: piensa
+          POSTGRES_DB: piensa_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U piensa -d piensa_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Requerida por la app y por los comandos de Prisma (validate/migrate);
+      # sin ella Prisma falla con P1012. Apunta al service container de arriba.
+      DATABASE_URL: postgresql://piensa:piensa@localhost:5432/piensa_test?schema=public
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar cliente Prisma
+        run: npx prisma generate
+
+      # `migrate deploy` aplica las migraciones existentes; con 0 migraciones
+      # (estado actual hasta ISSUE-05) no falla y deja el step listo para que
+      # ISSUE-05 agregue migraciones sin tocar este workflow.
+      - name: Aplicar migraciones Prisma
+        run: npx prisma migrate deploy
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
