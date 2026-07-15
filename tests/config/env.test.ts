@@ -4,6 +4,7 @@ import { EnvValidationError, loadEnv } from "../../src/config/env.js";
 const validEnv = {
   DATABASE_URL:
     "postgresql://piensa:piensa@localhost:5432/piensa_dev?schema=public",
+  JWT_SECRET: "un-secreto-de-al-menos-16-chars",
 };
 
 describe("loadEnv", () => {
@@ -14,6 +15,7 @@ describe("loadEnv", () => {
       DATABASE_URL: validEnv.DATABASE_URL,
       NODE_ENV: "test",
       PORT: 4000,
+      JWT_SECRET: validEnv.JWT_SECRET,
     });
   });
 
@@ -35,7 +37,8 @@ describe("loadEnv", () => {
   test("el error nombra la variable faltante con un mensaje accionable, sin stack", () => {
     let caught: unknown;
     try {
-      loadEnv({});
+      // Solo falta DATABASE_URL: el resto de requeridas se proveen.
+      loadEnv({ JWT_SECRET: validEnv.JWT_SECRET });
     } catch (err) {
       caught = err;
     }
@@ -58,6 +61,25 @@ describe("loadEnv", () => {
 
   test("rechaza un NODE_ENV desconocido", () => {
     expect(() => loadEnv({ ...validEnv, NODE_ENV: "staging" })).toThrow(
+      EnvValidationError,
+    );
+  });
+
+  test("lanza EnvValidationError cuando falta JWT_SECRET", () => {
+    const { JWT_SECRET: _omit, ...withoutSecret } = validEnv;
+    void _omit;
+    let caught: unknown;
+    try {
+      loadEnv(withoutSecret);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(EnvValidationError);
+    expect((caught as EnvValidationError).missing).toContain("JWT_SECRET");
+  });
+
+  test("rechaza un JWT_SECRET demasiado corto (débil)", () => {
+    expect(() => loadEnv({ ...validEnv, JWT_SECRET: "corto" })).toThrow(
       EnvValidationError,
     );
   });

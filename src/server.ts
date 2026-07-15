@@ -13,7 +13,7 @@ try {
   throw err;
 }
 
-const app = buildApp({ logger: true });
+const app = buildApp({ logger: true, jwtSecret: env.JWT_SECRET });
 
 app
   .listen({ port: env.PORT, host: "0.0.0.0" })
