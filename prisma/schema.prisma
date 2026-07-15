@@ -38,6 +38,26 @@ model User {
   // Familias cuyo padre es este User. Restrict: no se puede borrar un User que
   // aún tiene familias asociadas.
   families Family[]
+
+  // Sesiones activas (refresh tokens). Cascade: borrar el User cierra sus
+  // sesiones; no son datos de negocio que debamos preservar.
+  refreshTokens RefreshToken[]
+}
+
+// Refresh token opaco y persistente de una sesión de padre/admin (Spec §5 Auth).
+// Se guarda solo el hash SHA-256 del token de alta entropía entregado al cliente
+// (determinista, así el refresh lo localiza por hash y nunca se almacena en
+// claro). La rotación y la detección de reuso/robo se agregan en ISSUE-07.
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  tokenHash String   @unique
+  userId    String   @db.Uuid
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // Familia: unidad de facturación/suspensión. Su padre es un User rol `parent`.

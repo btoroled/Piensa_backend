@@ -8,7 +8,11 @@ export interface Env {
   DATABASE_URL: string;
   NODE_ENV: NodeEnv;
   PORT: number;
+  JWT_SECRET: string;
 }
+
+/** Largo mínimo del secreto de firma HS256; por debajo se considera débil. */
+const JWT_SECRET_MIN_LENGTH = 16;
 
 /**
  * Error tipado de configuración. Su `message` es apto para mostrarse al operador
@@ -59,6 +63,15 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     missing.push("DATABASE_URL");
   }
 
+  // Requerida: secreto de firma del access token JWT (Spec §6). Debe existir y
+  // no ser trivialmente corto, o la firma HS256 es débil.
+  const rawJwtSecret = source.JWT_SECRET;
+  if (isBlank(rawJwtSecret)) {
+    missing.push("JWT_SECRET");
+  } else if ((rawJwtSecret as string).length < JWT_SECRET_MIN_LENGTH) {
+    invalid.push("JWT_SECRET");
+  }
+
   // Opcional con default: development | test | production.
   const rawNodeEnv = source.NODE_ENV;
   let nodeEnv: NodeEnv = "development";
@@ -90,5 +103,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     DATABASE_URL: source.DATABASE_URL as string,
     NODE_ENV: nodeEnv,
     PORT: port,
+    JWT_SECRET: source.JWT_SECRET as string,
   };
 }
