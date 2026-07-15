@@ -63,16 +63,23 @@ function splitStatements(sql: string): string[] {
     .filter((stmt) => stmt.length > 0);
 }
 
+// Concatena TODAS las migraciones en orden lexicográfico (que es el orden
+// cronológico por el prefijo de timestamp). Aplicarlas todas mantiene el
+// round-trip simétrico con el schema completo: la bajada (diff del schema
+// actual → vacío) dropea exactamente lo que la subida creó, sin acoplarse a una
+// sola migración. Así el test no se rompe cuando un issue agrega migraciones.
 function migrationUpSql(): string {
   const migrationsDir = resolve(projectRoot, "prisma", "migrations");
-  const dir = readdirSync(migrationsDir, { withFileTypes: true }).find(
-    (entry) => entry.isDirectory() && entry.name.includes("init_personas"),
-  );
-  if (!dir) throw new Error("No se encontró la migración init_personas");
-  return readFileSync(
-    resolve(migrationsDir, dir.name, "migration.sql"),
-    "utf8",
-  );
+  const dirs = readdirSync(migrationsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+  if (dirs.length === 0) throw new Error("No se encontró ninguna migración");
+  return dirs
+    .map((name) =>
+      readFileSync(resolve(migrationsDir, name, "migration.sql"), "utf8"),
+    )
+    .join("\n");
 }
 
 const client = prisma as PrismaClient;
@@ -132,7 +139,7 @@ describe.skipIf(!dbAvailable)("Personas — constraints contra BD", () => {
     }
   });
 
-  test("la migración aplica y revierte limpiamente (round-trip aislado)", async () => {
+  test("las migraciones aplican y revierten limpiamente (round-trip aislado)", async () => {
     // Se ejercita en un schema PostgreSQL efímero para no tocar el schema
     // migrado que usan los tests de arriba.
     const iso = `it_roundtrip_${randomUUID().replace(/-/g, "")}`;
@@ -175,7 +182,16 @@ describe.skipIf(!dbAvailable)("Personas — constraints contra BD", () => {
           `SELECT table_name FROM information_schema.tables WHERE table_schema = '${iso}'`,
         );
         const names = tablesAfterUp.map((r) => r.table_name).sort();
-        expect(names).toEqual(["Family", "StudentProfile", "User"]);
+        // Subset tolerante: verifica que las tablas migradas hasta hoy existen,
+        // sin romperse cuando un issue futuro agregue más.
+        expect(names).toEqual(
+          expect.arrayContaining([
+            "Family",
+            "RefreshToken",
+            "StudentProfile",
+            "User",
+          ]),
+        );
 
         // Revierte: dropea FKs, tablas y enums generados por la migración.
         for (const stmt of downStatements) {
