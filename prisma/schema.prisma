@@ -47,17 +47,25 @@ model User {
 // Refresh token opaco y persistente de una sesión de padre/admin (Spec §5 Auth).
 // Se guarda solo el hash SHA-256 del token de alta entropía entregado al cliente
 // (determinista, así el refresh lo localiza por hash y nunca se almacena en
-// claro). La rotación y la detección de reuso/robo se agregan en ISSUE-07.
+// claro).
+//
+// Rotación con detección de robo (ISSUE-07): cada login abre una sesión
+// (`sessionId`) y cada refresh rota el token vigente marcando el anterior con
+// `revokedAt` e insertando uno nuevo en la misma sesión. Reusar un token ya
+// revocado revoca toda la cadena de esa sesión.
 model RefreshToken {
-  id        String   @id @default(uuid()) @db.Uuid
-  tokenHash String   @unique
-  userId    String   @db.Uuid
+  id        String    @id @default(uuid()) @db.Uuid
+  tokenHash String    @unique
+  userId    String    @db.Uuid
+  sessionId String    @db.Uuid
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([sessionId])
 }
 
 // Familia: unidad de facturación/suspensión. Su padre es un User rol `parent`.

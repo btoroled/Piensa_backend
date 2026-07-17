@@ -16,6 +16,7 @@ const NOW = new Date("2026-03-01T12:00:00Z");
 interface Persisted {
   userId: string;
   tokenHash: string;
+  sessionId: string;
   expiresAt: Date;
 }
 
@@ -96,6 +97,10 @@ describe("login (servicio)", () => {
     expect(row.tokenHash).toBe(hashRefreshToken(result.refreshToken));
     expect(row.tokenHash).not.toBe(result.refreshToken);
     expect(row.expiresAt.getTime()).toBeGreaterThan(NOW.getTime());
+    // El login abre una sesión: el primer token trae un sessionId (UUID).
+    expect(row.sessionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
   });
 
   test("un admin recibe token sin familyId y no consulta familia", async () => {
