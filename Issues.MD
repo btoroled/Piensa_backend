@@ -17,7 +17,7 @@
 
 ## Tablero de estado
 
-> Mantenido **únicamente por docs-agent** según los reportes del equipo. Última actualización: 2026-07-14.
+> Mantenido **únicamente por docs-agent** según los reportes del equipo. Última actualización: 2026-07-17.
 > Estados: ⚪ Pendiente · 🟡 En progreso · 🔵 En revisión · ✅ Completado · 🔴 Bloqueado
 
 | Issue | Estado | Responsable | Nota |
@@ -27,7 +27,10 @@
 | ISSUE-03 Convenciones de API | ✅ Completado | impl · review OK | PR #2 · mergeado a `main` (2026-07-14) · 14 tests verdes · criterios 5/5 · auditoría de seguridad (x-request-id / SQL sensible sin filtración) |
 | ISSUE-04 CI en GitHub Actions | ✅ Completado | impl · review OK | PR #3 · mergeado a `main` (2026-07-14) · CI verde · secuencia verde→rojo(test roto)→verde confirmada con `gh` · criterios 2/2 · nota no bloqueante: `actions/checkout@v4`+`setup-node@v4` avisan deprecación Node 20 (migrar a v5 a futuro) |
 | ISSUE-05 Modelo de datos de personas | ✅ Completado | impl · review (Lead) OK | rebase sobre `main` · 34 tests locales verdes + 3 de constraints en CI (email dup → P2002, borrar Family con perfiles → P2003 sin huérfanos, round-trip de migración) · criterios 2/2 · schema/migración coherentes con FK `onDelete: Restrict` |
-| ISSUE-06 … ISSUE-34 | ⚪ Pendiente | — | ver cuerpos abajo; respetar `Depende de:` |
+| ISSUE-06 Login de padre/admin | ✅ Completado | impl · review OK | PR #6 · mergeado a `main` (2026-07-15) · criterios 2/2 · argon2id + hash señuelo (sin enumeración por tiempo) · access token 15 min (clock falso) · refresh opaco persistido hasheado · credenciales/IDs validados con `pattern` (guarda `coerceTypes`) |
+| ISSUE-07 Refresh con rotación | ✅ Completado | impl · review OK | PR #7 · mergeado a `main` (2026-07-17) · criterios 2/2 · rotación atómica (revoca viejo + inserta nuevo) · reuso de token rotado → `UNAUTHORIZED` y revoca toda la cadena de la sesión (detección de robo) · mensaje único para todo fallo de refresh |
+| ISSUE-08 Sesión de alumno por PIN | ✅ Completado | impl · review OK | PR #8 · mergeado a `main` (2026-07-17) · criterios 3/3 · token role `student` (studentProfileId+familyId, 15 min) · pertenencia contra BD → `FORBIDDEN` uniforme (ajeno/inexistente) · bloqueo PIN 5 fallos/15 min, reset con acierto tras desbloqueo · `INVALID_PIN` uniforme (incorrecto/bloqueado) · 25 tests + 3 de integración en CI |
+| ISSUE-09 … ISSUE-34 | ⚪ Pendiente | — | ver cuerpos abajo; respetar `Depende de:` |
 
 ---
 
