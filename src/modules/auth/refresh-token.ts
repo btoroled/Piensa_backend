@@ -8,7 +8,7 @@
 // refresh (ISSUE-07). Guardar el hash evita que una fuga de BD entregue tokens
 // usables.
 
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 /** Vida del refresh token (constante documentada y ajustable). */
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -16,6 +16,11 @@ export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 /** Genera un refresh token opaco url-safe de 256 bits. */
 export function generateRefreshToken(): string {
   return randomBytes(32).toString("base64url");
+}
+
+/** Genera el identificador de una sesión (cadena de refresh tokens, ISSUE-07). */
+export function generateSessionId(): string {
+  return randomUUID();
 }
 
 /** Hash determinista (SHA-256 hex) para persistir/localizar el token. */
