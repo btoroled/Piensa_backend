@@ -5,6 +5,11 @@ import Fastify, {
 } from "fastify";
 import type { PrismaClient } from "@prisma/client";
 import { conventionsPlugin } from "./plugins/conventions.js";
+import {
+  DEFAULT_RATE_LIMIT,
+  rateLimitPlugin,
+  type RateLimitConfig,
+} from "./plugins/rate-limit.js";
 import { healthRoutes } from "./routes/health.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { getPrisma } from "./lib/prisma.js";
@@ -18,6 +23,9 @@ export interface BuildAppOptions {
   // Cliente Prisma; por defecto el singleton perezoso. Los tests de integración
   // inyectan el suyo para controlar su ciclo de vida.
   prisma?: PrismaClient;
+  // Límites de rate limiting; por defecto los de producción. Los tests los
+  // ajustan (p. ej. max bajo) para ejercer el rechazo de forma determinista.
+  rateLimit?: RateLimitConfig;
 }
 
 const INSECURE_TEST_SECRET = "insecure-test-secret-do-not-use-in-prod";
@@ -39,13 +47,20 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
 
   const jwtSecret = opts.jwtSecret ?? INSECURE_TEST_SECRET;
   const prisma = opts.prisma ?? getPrisma();
+  const rateLimit = opts.rateLimit ?? DEFAULT_RATE_LIMIT;
 
   app.register(conventionsPlugin);
+  // Después de conventions (para tener el x-request-id) y antes de las rutas.
+  app.register(rateLimitPlugin, { config: rateLimit });
 
   app.register(healthRoutes, { prefix: "/api/v1" });
   app.register(
     async (scope) => {
-      await authRoutes(scope, { prisma, jwtSecret });
+      await authRoutes(scope, {
+        prisma,
+        jwtSecret,
+        authRateLimit: rateLimit.auth,
+      });
     },
     { prefix: "/api/v1" },
   );

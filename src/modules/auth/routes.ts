@@ -11,10 +11,13 @@ import { AppError } from "../../plugins/errors.js";
 import { login, refresh } from "./service.js";
 import { createStudentSession } from "./student-session.js";
 import { createAuthorization } from "./authorize.js";
+import type { RateLimitRule } from "../../plugins/rate-limit.js";
 
 export interface AuthRoutesOptions {
   prisma: PrismaClient;
   jwtSecret: string;
+  /** Límite estricto por IP para los endpoints de credenciales (ISSUE-11). */
+  authRateLimit: RateLimitRule;
 }
 
 // Pattern de email deliberadamente conservador: descarta tipos coaccionados y
@@ -101,8 +104,13 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (
   app,
   opts,
 ) => {
-  const { prisma, jwtSecret } = opts;
+  const { prisma, jwtSecret, authRateLimit } = opts;
   const authz = createAuthorization({ jwtSecret, prisma });
+
+  // Límite estricto por-ruta sobre los endpoints de credenciales (ISSUE-11).
+  const authRateLimitConfig = {
+    rateLimit: { max: authRateLimit.max, timeWindow: authRateLimit.timeWindow },
+  };
 
   const familyIdOf = async (userId: string): Promise<string | null> => {
     const family = await prisma.family.findFirst({
@@ -114,7 +122,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (
 
   app.post<{ Body: LoginBody }>(
     "/auth/login",
-    { schema: { body: loginBodySchema } },
+    { schema: { body: loginBodySchema }, config: authRateLimitConfig },
     async (request) => {
       const { email, password } = request.body;
 
@@ -198,6 +206,7 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (
     "/auth/student-session",
     {
       schema: { body: studentSessionBodySchema },
+      config: authRateLimitConfig,
       preHandler: [authz.authenticate, authz.requireRole("parent")],
     },
     async (request) => {
