@@ -26,6 +26,19 @@ describe("access token", () => {
     });
   });
 
+  test("token de alumno: role student, studentProfileId y familyId; sin userId", async () => {
+    const token = await createAccessToken(SECRET, {
+      studentProfileId: "s1",
+      role: "student",
+      familyId: "f1",
+    });
+    const claims = await verifyAccessToken(SECRET, token);
+    expect(claims.role).toBe("student");
+    expect(claims.studentProfileId).toBe("s1");
+    expect(claims.familyId).toBe("f1");
+    expect(claims.userId).toBeUndefined();
+  });
+
   test("un admin no lleva familyId en los claims", async () => {
     const token = await createAccessToken(SECRET, {
       userId: "a1",

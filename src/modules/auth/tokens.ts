@@ -15,10 +15,25 @@ export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 
 const ALG = "HS256";
 
-/** Datos que viajan en el access token. `familyId` solo para padres. */
+/**
+ * Rol que porta el token. Superconjunto de {@link UserRole}: los alumnos no son
+ * `User` (entran por PIN, ISSUE-08) pero también reciben un token con role
+ * `student`. Un único par create/verify sirve a los tres roles y ISSUE-09 lo
+ * reutiliza para autorizar.
+ */
+export type TokenRole = UserRole | "student";
+
+/**
+ * Datos que viajan en el access token. El sujeto (`sub`) es el `userId` para
+ * admin/parent y el `studentProfileId` para alumnos; `role` lo desambigua.
+ * `familyId` acompaña a padres y alumnos, nunca a admin.
+ */
 export interface AccessTokenClaims {
-  userId: string;
-  role: UserRole;
+  /** Presente para admin/parent (exclusivo con `studentProfileId`). */
+  userId?: string;
+  /** Presente para alumnos (exclusivo con `userId`). */
+  studentProfileId?: string;
+  role: TokenRole;
   familyId?: string;
 }
 
@@ -36,6 +51,12 @@ export async function createAccessToken(
   claims: AccessTokenClaims,
 ): Promise<string> {
   const nowSeconds = Math.floor(Date.now() / 1000);
+  const subject = claims.userId ?? claims.studentProfileId;
+  if (subject === undefined) {
+    throw new Error(
+      "AccessTokenClaims requiere userId (admin/parent) o studentProfileId (alumno).",
+    );
+  }
   const payload: Record<string, unknown> = { role: claims.role };
   if (claims.familyId !== undefined) {
     payload.familyId = claims.familyId;
@@ -43,7 +64,7 @@ export async function createAccessToken(
 
   return new SignJWT(payload)
     .setProtectedHeader({ alg: ALG })
-    .setSubject(claims.userId)
+    .setSubject(subject)
     .setIssuedAt(nowSeconds)
     .setExpirationTime(nowSeconds + ACCESS_TOKEN_TTL_SECONDS)
     .sign(encodeSecret(secret));
@@ -61,9 +82,12 @@ export async function verifyAccessToken(
     algorithms: [ALG],
   });
 
+  const role = payload.role as TokenRole;
+  const subject = payload.sub as string;
   return {
-    userId: payload.sub as string,
-    role: payload.role as UserRole,
+    userId: role === "student" ? undefined : subject,
+    studentProfileId: role === "student" ? subject : undefined,
+    role,
     familyId:
       typeof payload.familyId === "string" ? payload.familyId : undefined,
   };

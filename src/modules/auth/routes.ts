@@ -5,9 +5,12 @@
 // modo que un tipo incorrecto se rechace en vez de coaccionarse en silencio. Se
 // aplica a todo Milestone 1.
 
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import type { PrismaClient } from "@prisma/client";
+import { AppError } from "../../plugins/errors.js";
 import { login, refresh } from "./service.js";
+import { createStudentSession } from "./student-session.js";
+import { verifyAccessToken } from "./tokens.js";
 
 export interface AuthRoutesOptions {
   prisma: PrismaClient;
@@ -21,6 +24,16 @@ const EMAIL_PATTERN = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";
 
 // El refresh token es base64url de 32 bytes: solo caracteres url-safe.
 const REFRESH_TOKEN_PATTERN = "^[A-Za-z0-9_-]+$";
+
+// UUID validado por `pattern` (no `format`): ajv-formats no está registrado y,
+// con `coerceTypes`, el pattern rechaza tipos coaccionados. Cubre las variantes
+// hex en minúscula/mayúscula que produce Prisma.
+const UUID_PATTERN =
+  "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
+
+// PIN de exactamente 4 dígitos. El `pattern` (no `type` a secas) rechaza tipos
+// coaccionados y longitudes inválidas — nota de review de ISSUE-03.
+const PIN_PATTERN = "^[0-9]{4}$";
 
 const loginBodySchema = {
   type: "object",
@@ -54,6 +67,22 @@ const refreshBodySchema = {
   },
 } as const;
 
+const studentSessionBodySchema = {
+  type: "object",
+  required: ["studentProfileId", "pin"],
+  additionalProperties: false,
+  properties: {
+    studentProfileId: {
+      type: "string",
+      pattern: UUID_PATTERN,
+    },
+    pin: {
+      type: "string",
+      pattern: PIN_PATTERN,
+    },
+  },
+} as const;
+
 interface LoginBody {
   email: string;
   password: string;
@@ -61,6 +90,46 @@ interface LoginBody {
 
 interface RefreshBody {
   refreshToken: string;
+}
+
+interface StudentSessionBody {
+  studentProfileId: string;
+  pin: string;
+}
+
+/**
+ * Autentica al padre por su access token (Bearer) y devuelve su userId.
+ * Verificación mínima inline: ISSUE-09 la extraerá a un hook reutilizable.
+ * @throws {AppError} UNAUTHORIZED si falta el token o es inválido.
+ * @throws {AppError} FORBIDDEN si el token no es de un padre.
+ */
+async function requireParent(
+  request: FastifyRequest,
+  jwtSecret: string,
+): Promise<string> {
+  const header = request.headers.authorization;
+  const token = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
+  if (!token) {
+    throw new AppError("UNAUTHORIZED", "Falta el token de autenticación.");
+  }
+
+  let role: string;
+  let userId: string | undefined;
+  try {
+    const claims = await verifyAccessToken(jwtSecret, token);
+    role = claims.role;
+    userId = claims.userId;
+  } catch {
+    throw new AppError("UNAUTHORIZED", "Token de autenticación inválido.");
+  }
+
+  if (role !== "parent" || userId === undefined) {
+    throw new AppError(
+      "FORBIDDEN",
+      "Se requiere una sesión de padre para esta acción.",
+    );
+  }
+  return userId;
 }
 
 export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (
@@ -153,6 +222,52 @@ export const authRoutes: FastifyPluginAsync<AuthRoutesOptions> = async (
           },
         },
         { refreshToken },
+      );
+
+      return { data: result };
+    },
+  );
+
+  app.post<{ Body: StudentSessionBody }>(
+    "/auth/student-session",
+    { schema: { body: studentSessionBodySchema } },
+    async (request) => {
+      const parentUserId = await requireParent(request, jwtSecret);
+
+      // La familia del padre se resuelve contra la BD, no desde el token: la
+      // pertenencia del perfil se compara contra este valor (Spec §6).
+      const parentFamilyId = await familyIdOf(parentUserId);
+      if (parentFamilyId === null) {
+        throw new AppError(
+          "FORBIDDEN",
+          "La cuenta no tiene una familia asociada.",
+        );
+      }
+
+      const { studentProfileId, pin } = request.body;
+      const result = await createStudentSession(
+        {
+          jwtSecret,
+          now: () => new Date(),
+          findStudentProfile: (id) =>
+            prisma.studentProfile.findUnique({
+              where: { id },
+              select: {
+                id: true,
+                familyId: true,
+                pinHash: true,
+                failedPinAttempts: true,
+                pinLockedUntil: true,
+              },
+            }),
+          updatePinState: async (id, state) => {
+            await prisma.studentProfile.update({
+              where: { id },
+              data: state,
+            });
+          },
+        },
+        { parentFamilyId, studentProfileId, pin },
       );
 
       return { data: result };

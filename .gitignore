@@ -3,3 +3,6 @@ dist/
 coverage/
 .env
 *.log
+
+# Tooling local de Claude Code (worktrees, plugins): no es del proyecto.
+.claude/
