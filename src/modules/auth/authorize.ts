@@ -86,9 +86,8 @@ export function createAuthorization(deps: AuthorizationDeps): Authorization {
         return;
       }
 
-      const bag = (
-        source.from === "params" ? request.params : request.body
-      ) as Record<string, unknown> | undefined;
+      const bag = (source.from === "params" ? request.params : request.body) as
+        Record<string, unknown> | undefined;
       const studentProfileId = bag?.[source.key];
       if (typeof studentProfileId !== "string") {
         throw forbiddenProfile();

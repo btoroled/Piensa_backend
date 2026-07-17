@@ -57,7 +57,8 @@ afterAll(async () => {
 });
 
 async function tokenFor(role: "admin" | "parent" | "student"): Promise<string> {
-  if (role === "admin") return createAccessToken(SECRET, { userId: "a1", role });
+  if (role === "admin")
+    return createAccessToken(SECRET, { userId: "a1", role });
   if (role === "parent")
     return createAccessToken(SECRET, { userId: "p1", role, familyId: "f1" });
   return createAccessToken(SECRET, {
