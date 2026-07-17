@@ -47,11 +47,29 @@ export function createAuthorization(deps: AuthorizationDeps): Authorization {
     if (!token) {
       throw new AppError("UNAUTHORIZED", "Falta el token de autenticación.");
     }
+    let principal: AccessTokenClaims;
     try {
-      request.authPrincipal = await verifyAccessToken(jwtSecret, token);
+      principal = await verifyAccessToken(jwtSecret, token);
     } catch {
       throw new AppError("UNAUTHORIZED", "Token de autenticación inválido.");
     }
+
+    // Suspensión efectiva de inmediato (ISSUE-10, Spec §5): el estado de la
+    // familia se lee de la BD en CADA request autenticado de padre/alumno; un
+    // token aún vigente no basta si la familia fue suspendida. El admin no tiene
+    // familia, así que no se consulta. El `familyId` viene de los claims
+    // firmados; el estado se lee de la BD, no del token.
+    if (principal.role !== "admin" && principal.familyId !== undefined) {
+      const family = await prisma.family.findUnique({
+        where: { id: principal.familyId },
+        select: { status: true },
+      });
+      if (family?.status === "suspended") {
+        throw new AppError("FAMILY_SUSPENDED", "La familia está suspendida.");
+      }
+    }
+
+    request.authPrincipal = principal;
   };
 
   const requireRole =

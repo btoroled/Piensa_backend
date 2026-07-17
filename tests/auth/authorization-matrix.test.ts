@@ -23,10 +23,13 @@ beforeAll(async () => {
     ajv: { customOptions: { removeAdditional: false } },
   });
   app.register(conventionsPlugin);
-  // prisma no se usa en endpoints solo-rol: un stub basta para construir.
+  // `authenticate` consulta `Family.status` (ISSUE-10); un stub que devuelve
+  // familia activa basta para la matriz de rol (sin BD real).
   const authz = createAuthorization({
     jwtSecret: SECRET,
-    prisma: {} as PrismaClient,
+    prisma: {
+      family: { findUnique: async () => ({ status: "active" }) },
+    } as unknown as PrismaClient,
   });
   app.register(
     async (scope) => {

@@ -1,20 +1,26 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import type { FastifyInstance } from "fastify";
+import type { PrismaClient } from "@prisma/client";
 import { buildApp } from "../../src/app.js";
 import { createAccessToken } from "../../src/modules/auth/tokens.js";
 
 // Validación de entrada y autenticación de POST /auth/student-session. No toca
-// la BD: la validación por JSON Schema y la verificación del Bearer cortan antes
-// de llegar a Prisma, así que estos tests corren sin Postgres. La pertenencia y
-// el PIN contra la BD se cubren en el test de integración.
+// la BD real: la validación por JSON Schema y la verificación del Bearer cortan
+// antes de llegar a los handlers. `authenticate` sí consulta `Family.status`
+// (ISSUE-10), así que se inyecta un stub de prisma que devuelve familia activa;
+// la pertenencia y el PIN contra la BD real se cubren en el test de integración.
 
 const SECRET = "test-secret-at-least-16-chars-long";
 const UUID = "11111111-1111-1111-1111-111111111111";
 
+const prismaStub = {
+  family: { findUnique: async () => ({ status: "active" }) },
+} as unknown as PrismaClient;
+
 let app: FastifyInstance;
 
 beforeAll(async () => {
-  app = buildApp({ jwtSecret: SECRET });
+  app = buildApp({ jwtSecret: SECRET, prisma: prismaStub });
   await app.ready();
 });
 
