@@ -30,7 +30,9 @@
 | ISSUE-06 Login de padre/admin | ✅ Completado | impl · review OK | PR #6 · mergeado a `main` (2026-07-15) · criterios 2/2 · argon2id + hash señuelo (sin enumeración por tiempo) · access token 15 min (clock falso) · refresh opaco persistido hasheado · credenciales/IDs validados con `pattern` (guarda `coerceTypes`) |
 | ISSUE-07 Refresh con rotación | ✅ Completado | impl · review OK | PR #7 · mergeado a `main` (2026-07-17) · criterios 2/2 · rotación atómica (revoca viejo + inserta nuevo) · reuso de token rotado → `UNAUTHORIZED` y revoca toda la cadena de la sesión (detección de robo) · mensaje único para todo fallo de refresh |
 | ISSUE-08 Sesión de alumno por PIN | ✅ Completado | impl · review OK | PR #8 · mergeado a `main` (2026-07-17) · criterios 3/3 · token role `student` (studentProfileId+familyId, 15 min) · pertenencia contra BD → `FORBIDDEN` uniforme (ajeno/inexistente) · bloqueo PIN 5 fallos/15 min, reset con acierto tras desbloqueo · `INVALID_PIN` uniforme (incorrecto/bloqueado) · 25 tests + 3 de integración en CI |
-| ISSUE-09 … ISSUE-34 | ⚪ Pendiente | — | ver cuerpos abajo; respetar `Depende de:` |
+| ISSUE-09 Autorización por rol y pertenencia | ✅ Completado | impl · review OK | PR #9 · mergeado a `main` (2026-07-17) · criterios 3/3 · primitivas `authenticate` / `requireRole` / `requireStudentOwnership` (preHandlers) · pertenencia contra BD (familia del padre desde BD, no del claim) · matriz rol×endpoint extensible · refactor de `/auth/student-session` a las primitivas · 15 tests de matriz + 4 de pertenencia en CI |
+| ISSUE-10 Suspensión de familia efectiva de inmediato | ✅ Completado | impl · review OK | PR #10 · CI verde (pendiente de merge) · criterios 2/2 · `authenticate` lee `Family.status` en cada request autenticado de padre/alumno → `FAMILY_SUSPENDED` con token aún vigente · admin exento (sin familyId) · reactivar restaura acceso, sin borrar datos · unitario con stub + integración end-to-end en CI |
+| ISSUE-11 … ISSUE-34 | ⚪ Pendiente | — | ver cuerpos abajo; respetar `Depende de:` |
 
 ---
 
