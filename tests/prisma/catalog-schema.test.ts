@@ -1,0 +1,107 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+import { describe, expect, test } from "vitest";
+
+// Verificación estática del modelo del catálogo (Spec §4, ISSUE-12). No requiere
+// base de datos: audita que el schema declare los modelos, enums, unicidad y
+// reglas de borrado exigidas. Los constraints reales se ejercitan contra la BD
+// en catalog-constraints.test.ts (corre en CI).
+
+const here = dirname(fileURLToPath(import.meta.url));
+const projectRoot = resolve(here, "..", "..");
+const schema = readFileSync(
+  resolve(projectRoot, "prisma", "schema.prisma"),
+  "utf8",
+);
+
+function modelBlock(name: string): string {
+  const match = schema.match(
+    new RegExp(`model\\s+${name}\\s*\\{([\\s\\S]*?)\\n\\}`),
+  );
+  if (!match) {
+    throw new Error(`No se encontró el modelo ${name} en schema.prisma`);
+  }
+  return match[1] as string;
+}
+
+describe("schema.prisma — modelo del catálogo", () => {
+  test("declara los enums de tipo de lección y de pregunta con los valores del spec", () => {
+    expect(schema).toMatch(
+      /enum\s+LessonType\s*\{[\s\S]*?video[\s\S]*?reading[\s\S]*?quiz[\s\S]*?\}/,
+    );
+    expect(schema).toMatch(
+      /enum\s+QuestionType\s*\{[\s\S]*?multiple_choice[\s\S]*?true_false[\s\S]*?fill_blank[\s\S]*?\}/,
+    );
+  });
+
+  test("Week cuelga de Grade con borrado restringido y número único por grado", () => {
+    const week = modelBlock("Week");
+    expect(week).toMatch(/gradeId\s+String/);
+    expect(week).toMatch(/title\s+String/);
+    expect(week).toMatch(/description\s+String\?/);
+    expect(week).toMatch(
+      /@relation\([^)]*fields:\s*\[gradeId\][^)]*onDelete:\s*Restrict[^)]*\)/,
+    );
+    expect(week).toMatch(/@@unique\(\[gradeId,\s*number\]\)/);
+  });
+
+  test("Lesson cuelga de Week (Restrict), tipa el type y guarda campos por tipo nullable", () => {
+    const lesson = modelBlock("Lesson");
+    expect(lesson).toMatch(/type\s+LessonType/);
+    // Campos específicos por tipo: nullable, no un blob JSON.
+    expect(lesson).toMatch(/embedUrl\s+String\?/);
+    expect(lesson).toMatch(/richContent\s+String\?/);
+    expect(lesson).toMatch(/fileKey\s+String\?/);
+    expect(lesson).toMatch(
+      /@relation\([^)]*fields:\s*\[weekId\][^)]*onDelete:\s*Restrict[^)]*\)/,
+    );
+    // order único por semana.
+    expect(lesson).toMatch(/@@unique\(\[weekId,\s*order\]\)/);
+  });
+
+  test("Question cuelga de Lesson (Restrict), con content/answerSpec JSON y order único por lección", () => {
+    const question = modelBlock("Question");
+    expect(question).toMatch(/type\s+QuestionType/);
+    expect(question).toMatch(/content\s+Json/);
+    expect(question).toMatch(/answerSpec\s+Json/);
+    expect(question).toMatch(/points\s+Int/);
+    expect(question).toMatch(
+      /@relation\([^)]*fields:\s*\[lessonId\][^)]*onDelete:\s*Restrict[^)]*\)/,
+    );
+    expect(question).toMatch(/@@unique\(\[lessonId,\s*order\]\)/);
+  });
+
+  test("Topic tiene name único; las tablas de etiquetado son join explícitos", () => {
+    const topic = modelBlock("Topic");
+    expect(topic).toMatch(/name\s+String\s+@unique/);
+
+    const lessonTopic = modelBlock("LessonTopic");
+    expect(lessonTopic).toMatch(/@@id\(\[lessonId,\s*topicId\]\)/);
+    // El link muere con su lección (Cascade) pero protege al topic (Restrict).
+    expect(lessonTopic).toMatch(
+      /@relation\([^)]*fields:\s*\[lessonId\][^)]*onDelete:\s*Cascade[^)]*\)/,
+    );
+    expect(lessonTopic).toMatch(
+      /@relation\([^)]*fields:\s*\[topicId\][^)]*onDelete:\s*Restrict[^)]*\)/,
+    );
+
+    const questionTopic = modelBlock("QuestionTopic");
+    expect(questionTopic).toMatch(/@@id\(\[questionId,\s*topicId\]\)/);
+    expect(questionTopic).toMatch(
+      /@relation\([^)]*fields:\s*\[questionId\][^)]*onDelete:\s*Cascade[^)]*\)/,
+    );
+    expect(questionTopic).toMatch(
+      /@relation\([^)]*fields:\s*\[topicId\][^)]*onDelete:\s*Restrict[^)]*\)/,
+    );
+  });
+
+  test("StudentProfile.gradeId queda cableado como FK a Grade con borrado restringido", () => {
+    const profile = modelBlock("StudentProfile");
+    // Sigue nullable (se asigna después), pero ahora es una relación real.
+    expect(profile).toMatch(/gradeId\s+String\?/);
+    expect(profile).toMatch(
+      /@relation\([^)]*fields:\s*\[gradeId\][^)]*onDelete:\s*Restrict[^)]*\)/,
+    );
+  });
+});
