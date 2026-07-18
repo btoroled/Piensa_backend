@@ -10,6 +10,7 @@ export const ERROR_CODES = [
   "UNAUTHORIZED",
   "FORBIDDEN",
   "NOT_FOUND",
+  "CONFLICT",
   "FAMILY_SUSPENDED",
   "ACCOUNT_SUSPENDED",
   "INVALID_PIN",
@@ -28,6 +29,7 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   FAMILY_SUSPENDED: 403,
   ACCOUNT_SUSPENDED: 403,
   NOT_FOUND: 404,
+  CONFLICT: 409,
   RATE_LIMITED: 429,
   INTERNAL: 500,
 };
@@ -81,6 +83,7 @@ export const SAFE_MESSAGES: Record<ErrorCode, string> = {
   FAMILY_SUSPENDED: "La familia está suspendida.",
   ACCOUNT_SUSPENDED: "La cuenta está suspendida.",
   NOT_FOUND: "Recurso no encontrado.",
+  CONFLICT: "El recurso no se puede modificar por su estado actual.",
   RATE_LIMITED: "Demasiadas solicitudes. Intenta más tarde.",
   INTERNAL: "Ocurrió un error interno.",
 };
