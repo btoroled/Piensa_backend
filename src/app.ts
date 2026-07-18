@@ -12,6 +12,7 @@ import {
 } from "./plugins/rate-limit.js";
 import { healthRoutes } from "./routes/health.js";
 import { authRoutes } from "./modules/auth/routes.js";
+import { adminRoutes } from "./modules/admin/routes.js";
 import { getPrisma } from "./lib/prisma.js";
 
 export interface BuildAppOptions {
@@ -61,6 +62,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
         jwtSecret,
         authRateLimit: rateLimit.auth,
       });
+    },
+    { prefix: "/api/v1" },
+  );
+  app.register(
+    async (scope) => {
+      await adminRoutes(scope, { prisma, jwtSecret });
     },
     { prefix: "/api/v1" },
   );

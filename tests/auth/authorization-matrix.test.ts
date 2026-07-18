@@ -23,12 +23,14 @@ beforeAll(async () => {
     ajv: { customOptions: { removeAdditional: false } },
   });
   app.register(conventionsPlugin);
-  // `authenticate` consulta `Family.status` (ISSUE-10); un stub que devuelve
-  // familia activa basta para la matriz de rol (sin BD real).
+  // `authenticate` consulta `Family.status` (ISSUE-10) y, para admin/super_admin,
+  // `User.status` (ISSUE-35); un stub que devuelve ambos activos basta para la
+  // matriz de rol (sin BD real).
   const authz = createAuthorization({
     jwtSecret: SECRET,
     prisma: {
       family: { findUnique: async () => ({ status: "active" }) },
+      user: { findUnique: async () => ({ status: "active" }) },
     } as unknown as PrismaClient,
   });
   app.register(
@@ -49,6 +51,11 @@ beforeAll(async () => {
         { preHandler: [authz.authenticate, authz.requireRole("student")] },
         ok,
       );
+      scope.get(
+        "/__test/super-only",
+        { preHandler: [authz.authenticate, authz.requireRole("super_admin")] },
+        ok,
+      );
     },
     { prefix: "/api/v1" },
   );
@@ -59,16 +66,19 @@ afterAll(async () => {
   await app.close();
 });
 
-async function tokenFor(role: "admin" | "parent" | "student"): Promise<string> {
-  if (role === "admin")
-    return createAccessToken(SECRET, { userId: "a1", role });
+async function tokenFor(
+  role: "admin" | "parent" | "student" | "super_admin",
+): Promise<string> {
   if (role === "parent")
     return createAccessToken(SECRET, { userId: "p1", role, familyId: "f1" });
-  return createAccessToken(SECRET, {
-    studentProfileId: "s1",
-    role,
-    familyId: "f1",
-  });
+  if (role === "student")
+    return createAccessToken(SECRET, {
+      studentProfileId: "s1",
+      role,
+      familyId: "f1",
+    });
+  // admin y super_admin: solo userId.
+  return createAccessToken(SECRET, { userId: "u1", role });
 }
 
 async function call(path: string, bearer?: string) {
@@ -81,9 +91,30 @@ async function call(path: string, bearer?: string) {
 
 // endpoint → estado esperado por principal.
 const MATRIX: Record<string, Record<string, number>> = {
-  "/__test/admin-only": { admin: 200, parent: 403, student: 403 },
-  "/__test/parent-only": { admin: 403, parent: 200, student: 403 },
-  "/__test/student-only": { admin: 403, parent: 403, student: 200 },
+  "/__test/admin-only": {
+    admin: 200,
+    parent: 403,
+    student: 403,
+    super_admin: 200,
+  },
+  "/__test/parent-only": {
+    admin: 403,
+    parent: 200,
+    student: 403,
+    super_admin: 403,
+  },
+  "/__test/student-only": {
+    admin: 403,
+    parent: 403,
+    student: 200,
+    super_admin: 403,
+  },
+  "/__test/super-only": {
+    admin: 403,
+    parent: 403,
+    student: 403,
+    super_admin: 200,
+  },
 };
 
 describe("matriz rol×endpoint", () => {

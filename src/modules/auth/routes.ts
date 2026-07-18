@@ -11,6 +11,11 @@ import { AppError } from "../../plugins/errors.js";
 import { login, refresh } from "./service.js";
 import { createStudentSession } from "./student-session.js";
 import { createAuthorization } from "./authorize.js";
+import {
+  UUID_PATTERN,
+  EMAIL_PATTERN,
+  PIN_PATTERN,
+} from "../../lib/validation.js";
 import type { RateLimitRule } from "../../plugins/rate-limit.js";
 
 export interface AuthRoutesOptions {
@@ -20,23 +25,10 @@ export interface AuthRoutesOptions {
   authRateLimit: RateLimitRule;
 }
 
-// Pattern de email deliberadamente conservador: descarta tipos coaccionados y
-// formas obviamente inválidas. La validación real de existencia la hace el
-// login contra la BD.
-const EMAIL_PATTERN = "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$";
-
-// El refresh token es base64url de 32 bytes: solo caracteres url-safe.
+// El refresh token es base64url de 32 bytes: solo caracteres url-safe. Es
+// específico de auth y queda local; UUID_PATTERN/EMAIL_PATTERN/PIN_PATTERN se
+// comparten desde src/lib/validation.ts (fuente única, ISSUE-35).
 const REFRESH_TOKEN_PATTERN = "^[A-Za-z0-9_-]+$";
-
-// UUID validado por `pattern` (no `format`): ajv-formats no está registrado y,
-// con `coerceTypes`, el pattern rechaza tipos coaccionados. Cubre las variantes
-// hex en minúscula/mayúscula que produce Prisma.
-const UUID_PATTERN =
-  "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
-
-// PIN de exactamente 4 dígitos. El `pattern` (no `type` a secas) rechaza tipos
-// coaccionados y longitudes inválidas — nota de review de ISSUE-03.
-const PIN_PATTERN = "^[0-9]{4}$";
 
 const loginBodySchema = {
   type: "object",

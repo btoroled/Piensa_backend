@@ -69,6 +69,23 @@ export function createAuthorization(deps: AuthorizationDeps): Authorization {
       }
     }
 
+    // Suspensión de cuenta admin efectiva de inmediato (ISSUE-35): el estado del
+    // User se lee de la BD en cada request de admin/super_admin. Un token aún
+    // vigente no basta si la cuenta fue suspendida. Padres/alumnos siguen por
+    // Family.status (arriba); no se agregan queries a su camino.
+    if (
+      (principal.role === "admin" || principal.role === "super_admin") &&
+      principal.userId !== undefined
+    ) {
+      const user = await prisma.user.findUnique({
+        where: { id: principal.userId },
+        select: { status: true },
+      });
+      if (user?.status === "suspended") {
+        throw new AppError("ACCOUNT_SUSPENDED", "La cuenta está suspendida.");
+      }
+    }
+
     request.authPrincipal = principal;
   };
 
@@ -79,7 +96,14 @@ export function createAuthorization(deps: AuthorizationDeps): Authorization {
       if (!principal) {
         throw new AppError("UNAUTHORIZED", "No autenticado.");
       }
-      if (!roles.includes(principal.role)) {
+      // Jerarquía: un super_admin satisface cualquier chequeo de admin, sin
+      // habilitarlo ruta por ruta (fail-safe, ISSUE-35). Una ruta que exige
+      // explícitamente 'super_admin' NO la satisface un admin.
+      const allowed = new Set<TokenRole>(roles);
+      if (allowed.has("admin")) {
+        allowed.add("super_admin");
+      }
+      if (!allowed.has(principal.role)) {
         throw new AppError("FORBIDDEN", "No tienes permiso para esta acción.");
       }
     };

@@ -12,10 +12,21 @@ datasource db {
 }
 
 // Rol de la cuenta con credenciales (email + contraseña). Los alumnos no son
-// User: entran por PIN sobre un StudentProfile (Spec §2).
+// User: entran por PIN sobre un StudentProfile (Spec §2). `super_admin` hereda
+// todo lo de `admin` y además gestiona cuentas admin (ISSUE-35); se carga solo
+// por acceso directo a la BD, nunca por API.
 enum UserRole {
   admin
   parent
+  super_admin
+}
+
+// Estado de una cuenta con credenciales. `suspended` corta el acceso del admin
+// en el siguiente request aunque su token siga vigente (ISSUE-35, mismo
+// principio que la suspensión de familia de ISSUE-10 pero a nivel User).
+enum UserStatus {
+  active
+  suspended
 }
 
 // Estado de la familia. `suspended` corta el acceso de padre e hijos sin borrar
@@ -28,12 +39,15 @@ enum FamilyStatus {
 
 // Cuenta con credenciales: administrador de la plataforma o padre de familia.
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  email        String   @unique
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String     @unique
   passwordHash String
   role         UserRole
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  // Estado de la cuenta (ISSUE-35). Suspender un admin lo deja fuera en el
+  // siguiente request; `authenticate` lo lee en cada request de admin/super_admin.
+  status       UserStatus @default(active)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   // Familias cuyo padre es este User. Restrict: no se puede borrar un User que
   // aún tiene familias asociadas.
