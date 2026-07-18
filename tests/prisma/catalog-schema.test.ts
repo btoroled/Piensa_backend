@@ -26,13 +26,13 @@ function modelBlock(name: string): string {
 }
 
 describe("schema.prisma — modelo del catálogo", () => {
-  test("declara los enums de tipo de lección y de pregunta con los valores del spec", () => {
+  test("declara el enum de tipo de lección con los valores del spec", () => {
     expect(schema).toMatch(
       /enum\s+LessonType\s*\{[\s\S]*?video[\s\S]*?reading[\s\S]*?quiz[\s\S]*?\}/,
     );
-    expect(schema).toMatch(
-      /enum\s+QuestionType\s*\{[\s\S]*?multiple_choice[\s\S]*?true_false[\s\S]*?fill_blank[\s\S]*?\}/,
-    );
+    // QuestionType dejó de ser enum: es el punto de extensión, la columna es
+    // String y el registro (ISSUE-15) valida el tipo. No debe haber enum.
+    expect(schema).not.toMatch(/enum\s+QuestionType/);
   });
 
   test("Week cuelga de Grade con borrado restringido y número único por grado", () => {
@@ -62,7 +62,7 @@ describe("schema.prisma — modelo del catálogo", () => {
 
   test("Question cuelga de Lesson (Restrict), con content/answerSpec JSON y order único por lección", () => {
     const question = modelBlock("Question");
-    expect(question).toMatch(/type\s+QuestionType/);
+    expect(question).toMatch(/type\s+String/);
     expect(question).toMatch(/content\s+Json/);
     expect(question).toMatch(/answerSpec\s+Json/);
     expect(question).toMatch(/points\s+Int/);

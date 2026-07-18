@@ -45,14 +45,6 @@ enum LessonType {
   quiz
 }
 
-// Tipos de pregunta de v1 (Spec §4). El punto de extensión (registry de tipos)
-// llega en ISSUE-15; aquí solo se fija el enum persistido.
-enum QuestionType {
-  multiple_choice
-  true_false
-  fill_blank
-}
-
 // Cuenta con credenciales: administrador de la plataforma o padre de familia.
 model User {
   id           String     @id @default(uuid()) @db.Uuid
@@ -206,15 +198,18 @@ model Lesson {
 // ver src/modules/catalog/questions.ts). `content` es lo que ve el alumno;
 // `answerSpec` es la respuesta correcta y NUNCA se serializa al cliente (ISSUE-21).
 model Question {
-  id         String       @id @default(uuid()) @db.Uuid
-  lessonId   String       @db.Uuid
+  id         String   @id @default(uuid()) @db.Uuid
+  lessonId   String   @db.Uuid
   order      Int
-  type       QuestionType
+  // Tipo de pregunta como texto libre: es el punto de extensión (ISSUE-15). El
+  // `questionTypeRegistry` es la fuente de verdad de qué tipos existen y valida
+  // content/answerSpec; agregar un tipo no requiere migración (Spec §4).
+  type       String
   content    Json
   answerSpec Json
-  points     Int          @default(0)
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  points     Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   lesson Lesson          @relation(fields: [lessonId], references: [id], onDelete: Restrict)
   topics QuestionTopic[]
