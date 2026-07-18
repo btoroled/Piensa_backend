@@ -3,11 +3,12 @@
 // (ISSUE-12) → CONFLICT vía mapDeleteRestrict.
 
 import type { FastifyPluginAsync } from "fastify";
-import type { PrismaClient } from "@prisma/client";
+import type { LessonType, PrismaClient } from "@prisma/client";
 import { AppError } from "../../plugins/errors.js";
 import { createAuthorization } from "../auth/authorize.js";
 import { UUID_PATTERN } from "../../lib/validation.js";
 import { isPrismaError, mapDeleteRestrict } from "../../lib/prisma-errors.js";
+import { assertValidLessonPayload, reorderLessons } from "./lessons.js";
 
 export interface CatalogRoutesOptions {
   prisma: PrismaClient;
@@ -99,6 +100,83 @@ const weekSelect = {
   number: true,
   title: true,
   description: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+const lessonContentProps = {
+  embedUrl: { type: "string", maxLength: 2000, pattern: "^https://[^\\s]+$" },
+  richContent: { type: "string", maxLength: 100000 },
+  fileKey: { type: "string", maxLength: 500 },
+} as const;
+
+const createLessonBodySchema = {
+  type: "object",
+  required: ["weekId", "type"],
+  additionalProperties: false,
+  properties: {
+    weekId: { type: "string", pattern: UUID_PATTERN },
+    type: { type: "string", enum: ["video", "reading", "quiz"] },
+    ...lessonContentProps,
+  },
+} as const;
+
+const updateLessonBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: { ...lessonContentProps },
+} as const;
+
+const lessonsQuerySchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: { weekId: { type: "string", pattern: UUID_PATTERN } },
+} as const;
+
+const reorderBodySchema = {
+  type: "object",
+  required: ["weekId", "orderedIds"],
+  additionalProperties: false,
+  properties: {
+    weekId: { type: "string", pattern: UUID_PATTERN },
+    orderedIds: {
+      type: "array",
+      minItems: 1,
+      maxItems: 1000,
+      uniqueItems: true,
+      items: { type: "string", pattern: UUID_PATTERN },
+    },
+  },
+} as const;
+
+interface CreateLessonBody {
+  weekId: string;
+  type: LessonType;
+  embedUrl?: string;
+  richContent?: string;
+  fileKey?: string;
+}
+interface UpdateLessonBody {
+  embedUrl?: string;
+  richContent?: string;
+  fileKey?: string;
+}
+interface LessonsQuery {
+  weekId?: string;
+}
+interface ReorderBody {
+  weekId: string;
+  orderedIds: string[];
+}
+
+const lessonSelect = {
+  id: true,
+  weekId: true,
+  order: true,
+  type: true,
+  embedUrl: true,
+  richContent: true,
+  fileKey: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -279,6 +357,141 @@ export const catalogRoutes: FastifyPluginAsync<CatalogRoutesOptions> = async (
         mapDeleteRestrict(
           err,
           "No se puede borrar la semana: tiene lecciones asociadas.",
+        );
+      }
+    },
+  );
+
+  // ── Lecciones ─────────────────────────────────────────────────────────────
+  app.post<{ Body: CreateLessonBody }>(
+    "/admin/lessons",
+    { schema: { body: createLessonBodySchema }, preHandler: adminOnly },
+    async (request, reply) => {
+      const { weekId, type, embedUrl, richContent, fileKey } = request.body;
+      assertValidLessonPayload(type, { embedUrl, richContent, fileKey });
+      try {
+        // order auto-asignado (append): max(order) de la semana + 1, atómico.
+        const lesson = await prisma.$transaction(async (tx) => {
+          const agg = await tx.lesson.aggregate({
+            where: { weekId },
+            _max: { order: true },
+          });
+          return tx.lesson.create({
+            data: {
+              weekId,
+              type,
+              order: (agg._max.order ?? 0) + 1,
+              embedUrl,
+              richContent,
+              fileKey,
+            },
+            select: lessonSelect,
+          });
+        });
+        reply.code(201);
+        return { data: lesson };
+      } catch (err) {
+        if (isPrismaError(err, "P2003"))
+          throw new AppError(
+            "VALIDATION_ERROR",
+            "La semana indicada no existe.",
+          );
+        throw err;
+      }
+    },
+  );
+
+  app.get<{ Querystring: LessonsQuery }>(
+    "/admin/lessons",
+    { schema: { querystring: lessonsQuerySchema }, preHandler: adminOnly },
+    async (request) => ({
+      data: await prisma.lesson.findMany({
+        where: request.query.weekId ? { weekId: request.query.weekId } : {},
+        select: lessonSelect,
+        orderBy: [{ weekId: "asc" }, { order: "asc" }],
+      }),
+    }),
+  );
+
+  // Antes que /admin/lessons/:id para que no se matchee "reorder" como :id.
+  app.post<{ Body: ReorderBody }>(
+    "/admin/lessons/reorder",
+    { schema: { body: reorderBodySchema }, preHandler: adminOnly },
+    async (request) => {
+      await reorderLessons(
+        prisma,
+        request.body.weekId,
+        request.body.orderedIds,
+      );
+      return {
+        data: await prisma.lesson.findMany({
+          where: { weekId: request.body.weekId },
+          select: lessonSelect,
+          orderBy: { order: "asc" },
+        }),
+      };
+    },
+  );
+
+  app.get<{ Params: IdParams }>(
+    "/admin/lessons/:id",
+    { schema: { params: idParamsSchema }, preHandler: adminOnly },
+    async (request) => {
+      const lesson = await prisma.lesson.findUnique({
+        where: { id: request.params.id },
+        select: lessonSelect,
+      });
+      if (!lesson) throw new AppError("NOT_FOUND", "Lección no encontrada.");
+      return { data: lesson };
+    },
+  );
+
+  app.patch<{ Params: IdParams; Body: UpdateLessonBody }>(
+    "/admin/lessons/:id",
+    {
+      schema: { params: idParamsSchema, body: updateLessonBodySchema },
+      preHandler: adminOnly,
+    },
+    async (request) => {
+      const existing = await prisma.lesson.findUnique({
+        where: { id: request.params.id },
+        select: { type: true },
+      });
+      if (!existing) throw new AppError("NOT_FOUND", "Lección no encontrada.");
+      // PATCH reemplaza el contenido del tipo actual (type inmutable): el nuevo
+      // conjunto de campos debe ser válido para ese tipo. Los ausentes → null.
+      const { embedUrl, richContent, fileKey } = request.body;
+      assertValidLessonPayload(existing.type, {
+        embedUrl,
+        richContent,
+        fileKey,
+      });
+      const lesson = await prisma.lesson.update({
+        where: { id: request.params.id },
+        data: {
+          embedUrl: embedUrl ?? null,
+          richContent: richContent ?? null,
+          fileKey: fileKey ?? null,
+        },
+        select: lessonSelect,
+      });
+      return { data: lesson };
+    },
+  );
+
+  app.delete<{ Params: IdParams }>(
+    "/admin/lessons/:id",
+    { schema: { params: idParamsSchema }, preHandler: adminOnly },
+    async (request) => {
+      try {
+        await prisma.lesson.delete({ where: { id: request.params.id } });
+        return { data: { id: request.params.id, deleted: true } };
+      } catch (err) {
+        if (isPrismaError(err, "P2025"))
+          throw new AppError("NOT_FOUND", "Lección no encontrada.");
+        mapDeleteRestrict(
+          err,
+          "No se puede borrar la lección: tiene preguntas asociadas.",
         );
       }
     },
