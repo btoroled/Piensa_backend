@@ -15,6 +15,8 @@ const UUID = "11111111-1111-1111-1111-111111111111";
 
 const prismaStub = {
   family: { findUnique: async () => ({ status: "active" }) },
+  // Para admin/super_admin `authenticate` lee User.status (ISSUE-35).
+  user: { findUnique: async () => ({ status: "active" }) },
 } as unknown as PrismaClient;
 
 let app: FastifyInstance;

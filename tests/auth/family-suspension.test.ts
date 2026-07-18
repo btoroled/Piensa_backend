@@ -34,6 +34,11 @@ beforeAll(async () => {
         return { status: familyStatus };
       },
     },
+    // Para admin/super_admin `authenticate` lee User.status (ISSUE-35); activo
+    // por defecto para no interferir con lo que este test verifica (la familia).
+    user: {
+      findUnique: async () => ({ status: "active" }),
+    },
   } as unknown as PrismaClient;
   const authz = createAuthorization({ jwtSecret: SECRET, prisma });
   app.register(

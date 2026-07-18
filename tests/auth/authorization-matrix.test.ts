@@ -23,12 +23,14 @@ beforeAll(async () => {
     ajv: { customOptions: { removeAdditional: false } },
   });
   app.register(conventionsPlugin);
-  // `authenticate` consulta `Family.status` (ISSUE-10); un stub que devuelve
-  // familia activa basta para la matriz de rol (sin BD real).
+  // `authenticate` consulta `Family.status` (ISSUE-10) y, para admin/super_admin,
+  // `User.status` (ISSUE-35); un stub que devuelve ambos activos basta para la
+  // matriz de rol (sin BD real).
   const authz = createAuthorization({
     jwtSecret: SECRET,
     prisma: {
       family: { findUnique: async () => ({ status: "active" }) },
+      user: { findUnique: async () => ({ status: "active" }) },
     } as unknown as PrismaClient,
   });
   app.register(
