@@ -215,5 +215,9 @@ describe.skipIf(!dbAvailable)("Personas — constraints contra BD", () => {
     } finally {
       await client.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${iso}" CASCADE`);
     }
-  });
+    // Round-trip pesado: aplica y revierte TODAS las migraciones y spawnea
+    // `prisma migrate diff`. Con el catálogo (ISSUE-12) hay más tablas; bajo la
+    // carga de la suite completa el default de 5s de vitest queda corto. Margen
+    // amplio para que no sea flaky (en aislamiento corre en ~2.6s).
+  }, 30_000);
 });

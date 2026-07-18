@@ -26,6 +26,22 @@ enum FamilyStatus {
   suspended
 }
 
+// Tipo de lección (Spec §4). Cada tipo usa sus propios campos en `Lesson`:
+// video → embedUrl; reading → richContent o fileKey (R2); quiz → cuelga Questions.
+enum LessonType {
+  video
+  reading
+  quiz
+}
+
+// Tipos de pregunta de v1 (Spec §4). El punto de extensión (registry de tipos)
+// llega en ISSUE-15; aquí solo se fija el enum persistido.
+enum QuestionType {
+  multiple_choice
+  true_false
+  fill_blank
+}
+
 // Cuenta con credenciales: administrador de la plataforma o padre de familia.
 model User {
   id           String   @id @default(uuid()) @db.Uuid
@@ -94,8 +110,8 @@ model StudentProfile {
   name              String
   avatar            String
   pinHash           String
-  // Grado asignado. Nullable hasta que el admin lo asigne; la FK a Grade se
-  // agrega con el catálogo (ISSUE-12), por eso aquí es una columna suelta.
+  // Grado asignado. Nullable hasta que el admin lo asigne (Spec §4). FK a Grade
+  // con Restrict: no se puede borrar un grado con alumnos asignados (ISSUE-12).
   gradeId           String?   @db.Uuid
   failedPinAttempts Int       @default(0)
   pinLockedUntil    DateTime?
@@ -106,5 +122,128 @@ model StudentProfile {
   // StudentProfiles (criterio de aceptación ISSUE-05).
   family Family @relation(fields: [familyId], references: [id], onDelete: Restrict)
 
+  // Grado asignado (ISSUE-12). Restrict: no se puede borrar un grado con
+  // alumnos asignados. La relación es opcional (gradeId nullable).
+  grade Grade? @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+
   @@index([familyId])
+  @@index([gradeId])
+}
+
+// ── Catálogo (Spec §4) ──────────────────────────────────────────────────────
+// Contenido que carga el admin, compartido por todas las familias. Sin estado
+// por-alumno: la completitud y el progreso viven en ISSUE-19/20. La jerarquía se
+// protege con onDelete: Restrict (borrar con contenido → rechazo explícito).
+
+// Grado escolar (ej. "3° Primaria"): raíz del árbol de contenido y unidad que se
+// asigna a un StudentProfile.
+model Grade {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  weeks    Week[]
+  // Restrict: no se puede borrar un grado que tenga alumnos asignados.
+  students StudentProfile[]
+}
+
+// Semana: las "secciones" estilo Duolingo dentro de un grado. `number` ordena las
+// semanas y es único por grado.
+model Week {
+  id          String   @id @default(uuid()) @db.Uuid
+  gradeId     String   @db.Uuid
+  number      Int
+  title       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  grade   Grade    @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+  lessons Lesson[]
+
+  @@unique([gradeId, number])
+  @@index([gradeId])
+}
+
+// Lección: unidad de contenido dentro de una semana. `order` la posiciona y es
+// único por semana. Los campos por tipo son nullable (solo el del `type` aplica);
+// la coherencia payload↔type la valida el CRUD (ISSUE-14).
+model Lesson {
+  id          String     @id @default(uuid()) @db.Uuid
+  weekId      String     @db.Uuid
+  order       Int
+  type        LessonType
+  embedUrl    String?
+  richContent String?
+  fileKey     String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  week      Week          @relation(fields: [weekId], references: [id], onDelete: Restrict)
+  questions Question[]
+  topics    LessonTopic[]
+
+  @@unique([weekId, order])
+  @@index([weekId])
+}
+
+// Pregunta: solo cuelga de una Lesson tipo `quiz` (regla validada en servicio,
+// ver src/modules/catalog/questions.ts). `content` es lo que ve el alumno;
+// `answerSpec` es la respuesta correcta y NUNCA se serializa al cliente (ISSUE-21).
+model Question {
+  id         String       @id @default(uuid()) @db.Uuid
+  lessonId   String       @db.Uuid
+  order      Int
+  type       QuestionType
+  content    Json
+  answerSpec Json
+  points     Int          @default(0)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  lesson Lesson          @relation(fields: [lessonId], references: [id], onDelete: Restrict)
+  topics QuestionTopic[]
+
+  @@unique([lessonId, order])
+  @@index([lessonId])
+}
+
+// Topic transversal (ej. "Fracciones"): etiqueta lecciones y preguntas sin
+// importar la semana. Base de la maestría por topic (ISSUE-28).
+model Topic {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lessons   LessonTopic[]
+  questions QuestionTopic[]
+}
+
+// Etiquetado Lesson↔Topic (join explícito). Cascade hacia la lección (el link es
+// dato de la lección), Restrict hacia el topic (un topic en uso no se borra,
+// ISSUE-16).
+model LessonTopic {
+  lessonId String @db.Uuid
+  topicId  String @db.Uuid
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  topic  Topic  @relation(fields: [topicId], references: [id], onDelete: Restrict)
+
+  @@id([lessonId, topicId])
+  @@index([topicId])
+}
+
+// Etiquetado Question↔Topic (join explícito). Mismas reglas de borrado que
+// LessonTopic.
+model QuestionTopic {
+  questionId String @db.Uuid
+  topicId    String @db.Uuid
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  topic    Topic    @relation(fields: [topicId], references: [id], onDelete: Restrict)
+
+  @@id([questionId, topicId])
+  @@index([topicId])
 }
