@@ -3,12 +3,14 @@
 // (ISSUE-12) → CONFLICT vía mapDeleteRestrict.
 
 import type { FastifyPluginAsync } from "fastify";
-import type { LessonType, PrismaClient } from "@prisma/client";
+import type { LessonType, Prisma, PrismaClient } from "@prisma/client";
 import { AppError } from "../../plugins/errors.js";
 import { createAuthorization } from "../auth/authorize.js";
 import { UUID_PATTERN } from "../../lib/validation.js";
 import { isPrismaError, mapDeleteRestrict } from "../../lib/prisma-errors.js";
 import { assertValidLessonPayload, reorderLessons } from "./lessons.js";
+import { assertLessonAcceptsQuestions } from "./questions.js";
+import { assertValidQuestion } from "./question-types.js";
 
 export interface CatalogRoutesOptions {
   prisma: PrismaClient;
@@ -177,6 +179,64 @@ const lessonSelect = {
   embedUrl: true,
   richContent: true,
   fileKey: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+const createQuestionBodySchema = {
+  type: "object",
+  required: ["lessonId", "type", "content", "answerSpec"],
+  additionalProperties: false,
+  properties: {
+    lessonId: { type: "string", pattern: UUID_PATTERN },
+    type: { type: "string", minLength: 1, maxLength: 50 },
+    content: { type: "object" },
+    answerSpec: { type: "object" },
+    points: { type: "integer", minimum: 1, maximum: 1000 },
+  },
+} as const;
+
+const updateQuestionBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  minProperties: 1,
+  properties: {
+    content: { type: "object" },
+    answerSpec: { type: "object" },
+    points: { type: "integer", minimum: 1, maximum: 1000 },
+  },
+} as const;
+
+const questionsQuerySchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: { lessonId: { type: "string", pattern: UUID_PATTERN } },
+} as const;
+
+interface CreateQuestionBody {
+  lessonId: string;
+  type: string;
+  content: Prisma.InputJsonValue;
+  answerSpec: Prisma.InputJsonValue;
+  points?: number;
+}
+interface UpdateQuestionBody {
+  content?: Prisma.InputJsonValue;
+  answerSpec?: Prisma.InputJsonValue;
+  points?: number;
+}
+interface QuestionsQuery {
+  lessonId?: string;
+}
+
+const questionSelect = {
+  id: true,
+  lessonId: true,
+  order: true,
+  type: true,
+  content: true,
+  answerSpec: true,
+  points: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -493,6 +553,117 @@ export const catalogRoutes: FastifyPluginAsync<CatalogRoutesOptions> = async (
           err,
           "No se puede borrar la lección: tiene preguntas asociadas.",
         );
+      }
+    },
+  );
+
+  // ── Preguntas ─────────────────────────────────────────────────────────────
+  app.post<{ Body: CreateQuestionBody }>(
+    "/admin/questions",
+    { schema: { body: createQuestionBodySchema }, preHandler: adminOnly },
+    async (request, reply) => {
+      const { lessonId, type, content, answerSpec, points } = request.body;
+      const lesson = await prisma.lesson.findUnique({
+        where: { id: lessonId },
+        select: { type: true },
+      });
+      if (!lesson)
+        throw new AppError(
+          "VALIDATION_ERROR",
+          "La lección indicada no existe.",
+        );
+      assertLessonAcceptsQuestions({ type: lesson.type }); // solo quiz
+      assertValidQuestion(type, content, answerSpec);
+      const question = await prisma.$transaction(async (tx) => {
+        const agg = await tx.question.aggregate({
+          where: { lessonId },
+          _max: { order: true },
+        });
+        return tx.question.create({
+          data: {
+            lessonId,
+            type,
+            content,
+            answerSpec,
+            points: points ?? 1,
+            order: (agg._max.order ?? 0) + 1,
+          },
+          select: questionSelect,
+        });
+      });
+      reply.code(201);
+      return { data: question };
+    },
+  );
+
+  app.get<{ Querystring: QuestionsQuery }>(
+    "/admin/questions",
+    { schema: { querystring: questionsQuerySchema }, preHandler: adminOnly },
+    async (request) => ({
+      data: await prisma.question.findMany({
+        where: request.query.lessonId
+          ? { lessonId: request.query.lessonId }
+          : {},
+        select: questionSelect,
+        orderBy: [{ lessonId: "asc" }, { order: "asc" }],
+      }),
+    }),
+  );
+
+  app.get<{ Params: IdParams }>(
+    "/admin/questions/:id",
+    { schema: { params: idParamsSchema }, preHandler: adminOnly },
+    async (request) => {
+      const question = await prisma.question.findUnique({
+        where: { id: request.params.id },
+        select: questionSelect,
+      });
+      if (!question) throw new AppError("NOT_FOUND", "Pregunta no encontrada.");
+      return { data: question };
+    },
+  );
+
+  app.patch<{ Params: IdParams; Body: UpdateQuestionBody }>(
+    "/admin/questions/:id",
+    {
+      schema: { params: idParamsSchema, body: updateQuestionBodySchema },
+      preHandler: adminOnly,
+    },
+    async (request) => {
+      const existing = await prisma.question.findUnique({
+        where: { id: request.params.id },
+        select: { type: true, content: true, answerSpec: true },
+      });
+      if (!existing) throw new AppError("NOT_FOUND", "Pregunta no encontrada.");
+      const nextContent = request.body.content ?? existing.content;
+      const nextSpec = request.body.answerSpec ?? existing.answerSpec;
+      // type inmutable: se valida el resultado contra el schema del tipo actual.
+      assertValidQuestion(existing.type, nextContent, nextSpec);
+      const question = await prisma.question.update({
+        where: { id: request.params.id },
+        data: {
+          content: request.body.content,
+          answerSpec: request.body.answerSpec,
+          points: request.body.points,
+        },
+        select: questionSelect,
+      });
+      return { data: question };
+    },
+  );
+
+  app.delete<{ Params: IdParams }>(
+    "/admin/questions/:id",
+    { schema: { params: idParamsSchema }, preHandler: adminOnly },
+    async (request) => {
+      try {
+        // Sin dependientes que la bloqueen: sus QuestionTopic caen por Cascade.
+        await prisma.question.delete({ where: { id: request.params.id } });
+        return { data: { id: request.params.id, deleted: true } };
+      } catch (err) {
+        if (isPrismaError(err, "P2025"))
+          throw new AppError("NOT_FOUND", "Pregunta no encontrada.");
+        throw err;
       }
     },
   );
