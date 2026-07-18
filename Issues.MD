@@ -33,6 +33,7 @@
 | ISSUE-09 Autorización por rol y pertenencia | ✅ Completado | impl · review OK | PR #9 · mergeado a `main` (2026-07-17) · criterios 3/3 · primitivas `authenticate` / `requireRole` / `requireStudentOwnership` (preHandlers) · pertenencia contra BD (familia del padre desde BD, no del claim) · matriz rol×endpoint extensible · refactor de `/auth/student-session` a las primitivas · 15 tests de matriz + 4 de pertenencia en CI |
 | ISSUE-10 Suspensión de familia efectiva de inmediato | ✅ Completado | impl · review OK | PR #10 · CI verde (pendiente de merge) · criterios 2/2 · `authenticate` lee `Family.status` en cada request autenticado de padre/alumno → `FAMILY_SUSPENDED` con token aún vigente · admin exento (sin familyId) · reactivar restaura acceso, sin borrar datos · unitario con stub + integración end-to-end en CI |
 | ISSUE-11 … ISSUE-34 | ⚪ Pendiente | — | ver cuerpos abajo; respetar `Depende de:` |
+| ISSUE-35 Rol super_admin | ⚪ Pendiente | — | **nuevo** (2026-07-17); se implementa entre ISSUE-12 e ISSUE-13 (secuencia de Milestone 2) |
 
 ---
 
@@ -137,8 +138,20 @@ Migración Prisma: `Grade`, `Week` (gradeId, number, title, description), `Lesso
 - Constraint: `Question` solo puede colgar de `Lesson` tipo `quiz` (validado en capa de servicio con test).
 - `order` único por semana (lecciones) y por lección (preguntas).
 
+### ISSUE-35: Rol super_admin y gestión de cuentas admin
+**Spec:** §2 (roles), §5 (Admin), §6 (Seguridad) · **Depende de:** ISSUE-09 · **Secuencia:** entre ISSUE-12 e ISSUE-13
+> Issue **nuevo** (2026-07-17), fuera del numerado original 01–34. Ver arquitectura en `docs/superpowers/specs/2026-07-17-milestone-2-catalog-admin-architecture.md` §2.8. Extiende el spec §2: se agrega un rol `super_admin` por encima de `admin`.
+
+Rol `super_admin` que hereda todo lo de `admin` y además gestiona cuentas admin (estilo Moodle). `super_admin` se agrega al enum `UserRole`; `requireRole` implementa jerarquía (`super_admin` satisface cualquier chequeo de `admin`, sin habilitarlo ruta por ruta). El primer super_admin y cualquier otro se cargan **manualmente a la BD**: ningún endpoint crea super_admins (el endpoint de creación fija el rol a `admin` en el servidor). Suspensión de admins vía `User.status` (`UserStatus { active, suspended }`) leído en `authenticate` en cada request (efectiva de inmediato, como ISSUE-10 pero a nivel User) → código nuevo `ACCOUNT_SUSPENDED`. Este issue también hace la extracción de patterns de validación a `src/lib/validation.ts` (fuente única anti-`coerceTypes`) por ser el primero con ruta admin.
+**Endpoints (solo `super_admin`; solo apuntables a usuarios rol `admin`):** `POST /admin/users` (crear admin, contraseña temporal), `GET /admin/users` (listar), `POST /admin/users/:id/suspend`, `POST /admin/users/:id/reactivate`, `DELETE /admin/users/:id`.
+**Criterios de aceptación:**
+- `super_admin` pasa cualquier ruta `requireRole('admin')`; un `admin` normal llamando un endpoint `/admin/users` → `FORBIDDEN` (extiende la matriz de ISSUE-09).
+- Crear por API siempre produce rol `admin` (nunca `super_admin`), verificado por test.
+- Suspender un admin corta su acceso en el siguiente request con token aún vigente → `ACCOUNT_SUSPENDED`; reactivar lo restaura.
+- Un endpoint de gestión apuntando a un `super_admin` o a un `parent` → `FORBIDDEN` (test).
+
 ### ISSUE-13: CRUD de grados y semanas
-**Spec:** §5 (Admin) · **Depende de:** ISSUE-09, ISSUE-12
+**Spec:** §5 (Admin) · **Depende de:** ISSUE-09, ISSUE-12, ISSUE-35
 `CRUD /admin/grades` y `/admin/weeks` (solo rol admin). Borrado de un grado/semana con contenido → rechazo con error explícito (sin borrados en cascada silenciosos).
 **Criterios de aceptación:**
 - CRUD completo con validación JSON Schema por operación.
@@ -172,14 +185,18 @@ Migración Prisma: `Grade`, `Week` (gradeId, number, title, description), `Lesso
 
 ### ISSUE-18: Gestión de familias y overview
 **Spec:** §2 (registro cerrado, bloqueo manual), §5 (Admin) · **Depende de:** ISSUE-10
-`CRUD /admin/families` (crear familia = crear User padre con contraseña temporal + Family; crear perfiles de alumnos con PIN inicial), `POST /admin/families/:id/suspend` (nota opcional, p. ej. "pendiente pago julio"), `POST /admin/families/:id/reactivate`, `GET /admin/overview` (familias activas/suspendidas, alumnos con actividad en los últimos 7 días).
+`CRUD /admin/families` (crear familia = crear User padre con contraseña temporal + Family; crear perfiles de alumnos con PIN inicial), `POST /admin/families/:id/suspend` (nota opcional, p. ej. "pendiente pago julio"), `POST /admin/families/:id/reactivate`, `GET /admin/overview` (familias activas/suspendidas y nº de alumnos).
+> **Recorte acordado (2026-07-17):** la métrica "alumnos con actividad en los últimos 7 días" **se difiere a Milestone 3**. Los datos de actividad (`LessonProgress`, `XPEvent`, `Streak`) nacen en ISSUE-19, posterior a este milestone, así que al construir ISSUE-18 no existe señal de actividad que consultar. El bloque de actividad del overview se agrega como follow-up chico una vez exista el progreso. Ver `docs/superpowers/specs/2026-07-17-milestone-3-planning-notes.md`.
 **Criterios de aceptación:**
 - Flujo completo: admin crea familia → padre hace login con credencial temporal → crea sesión de alumno (test de integración end-to-end).
 - Suspend/reactivate reflejan el comportamiento ya probado en ISSUE-10 vía estos endpoints.
+- `GET /admin/overview` devuelve conteos de familias activas/suspendidas y de alumnos (sin el bloque de actividad, diferido a M3).
 
 ---
 
 ## Milestone 3 — Experiencia del alumno: progreso y gamificación
+
+> **Notas de planificación anticipada (2026-07-17):** `docs/superpowers/specs/2026-07-17-milestone-3-planning-notes.md` recoge decisiones tomadas durante Milestone 2 que aplican acá: (1) el **follow-up del `GET /admin/overview`** (métrica "actividad últimos 7 días", diferida de ISSUE-18) se agrega una vez exista el progreso; (2) el tipo de pregunta **"desarrollo"** (respuesta abierta) corregido por **similitud semántica con un modelo local** (no API externa, por privacidad de menores), como extensión del motor de corrección (ISSUE-23) vía el registro de tipos.
 
 ### ISSUE-19: Modelo de datos de progreso y juego
 **Spec:** §4 (Progreso y juego) · **Depende de:** ISSUE-12
@@ -309,7 +326,7 @@ Job de GitHub Actions en push a `main`: **solo si los tests pasan**, construye l
 
 | Sección del spec | Issues |
 |---|---|
-| §2 Decisiones (stack, registro cerrado, alumnos por PIN) | 01, 06, 08, 18 |
+| §2 Decisiones (stack, registro cerrado, alumnos por PIN, roles) | 01, 06, 08, 18, 35 |
 | §3 Arquitectura e infra VPS | 01, 02, 17, 31, 32, 33 |
 | §4 Personas | 05 |
 | §4 Catálogo y Topics | 12, 13, 14, 16 |
@@ -319,8 +336,8 @@ Job de GitHub Actions en push a `main`: **solo si los tests pasan**, construye l
 | §5 Autenticación | 06, 07, 08 |
 | §5 Endpoints alumno | 20, 21, 22, 24, 29 |
 | §5 Endpoints padre | 30 |
-| §5 Endpoints admin | 13, 14, 15, 16, 17, 18 |
+| §5 Endpoints admin | 13, 14, 15, 16, 17, 18, 35 |
 | §5 Suspensión manual | 10, 18 |
-| §6 Seguridad | 03, 06, 07, 08, 09, 10, 11, 21, 31, 32, 33 |
+| §6 Seguridad | 03, 06, 07, 08, 09, 10, 11, 21, 31, 32, 33, 35 |
 | §7 Testing y CI | 04, 34 + DoD de todos los issues |
 | §8 Fuera de alcance | Backlog v2 |
