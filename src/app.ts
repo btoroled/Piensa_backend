@@ -7,6 +7,7 @@ import type { PrismaClient } from "@prisma/client";
 import { conventionsPlugin } from "./plugins/conventions.js";
 import { healthRoutes } from "./routes/health.js";
 import { authRoutes } from "./modules/auth/routes.js";
+import { adminRoutes } from "./modules/admin/routes.js";
 import { getPrisma } from "./lib/prisma.js";
 
 export interface BuildAppOptions {
@@ -46,6 +47,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(
     async (scope) => {
       await authRoutes(scope, { prisma, jwtSecret });
+    },
+    { prefix: "/api/v1" },
+  );
+  app.register(
+    async (scope) => {
+      await adminRoutes(scope, { prisma, jwtSecret });
     },
     { prefix: "/api/v1" },
   );

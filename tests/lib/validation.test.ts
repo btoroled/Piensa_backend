@@ -19,9 +19,9 @@ describe("UUID_PATTERN", () => {
   });
   test("rechaza basura, prefijos/sufijos y strings vacíos (anclado)", () => {
     expect(matches(UUID_PATTERN, "no-uuid")).toBe(false);
-    expect(
-      matches(UUID_PATTERN, " 3f1d2c4b-5a6e-7f80-9123-abcdef012345"),
-    ).toBe(false);
+    expect(matches(UUID_PATTERN, " 3f1d2c4b-5a6e-7f80-9123-abcdef012345")).toBe(
+      false,
+    );
     expect(
       matches(UUID_PATTERN, "3f1d2c4b-5a6e-7f80-9123-abcdef012345;DROP"),
     ).toBe(false);
