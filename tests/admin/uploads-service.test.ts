@@ -47,7 +47,9 @@ describe("requestUpload", () => {
   });
   test("tipo no permitido → VALIDATION_ERROR (no firma)", async () => {
     const d = deps();
-    await bad(requestUpload(d, { contentType: "image/svg+xml", sizeBytes: 10 }));
+    await bad(
+      requestUpload(d, { contentType: "image/svg+xml", sizeBytes: 10 }),
+    );
     expect(d.presignUpload).not.toHaveBeenCalled();
   });
   test("tamaño mayor al máximo → VALIDATION_ERROR", async () => {
