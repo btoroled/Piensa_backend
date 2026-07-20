@@ -67,19 +67,29 @@ User (rol: admin | parent) — email + contraseña (argon2)
 
 ### Catálogo (lo que carga el admin)
 
+> **Revisión Milestone 2.5 (2026-07-19):** el catálogo se organiza por **materias y cursos**, no por un único grado. Un alumno cursa varias materias por año; cada materia-año es un **curso** con su propio contenido y su propio XP (estilo Khan). Ver diseño en `docs/superpowers/specs/2026-07-19-milestone-2.5-subjects-courses-enrollment.md`.
+
 ```
-Grade (ej. "3° Primaria")
+Subject (Materia: Matemáticas, Ciencias, …)
+Grade   (Año/Nivel: "3° Primaria", con `level` para ordenar)
+Course  = Subject × Grade  (ej. "Matemáticas 3°")   ← unidad de contenido y de XP
   └─ Week (número, título, descripción) — las "secciones" estilo Duolingo
        └─ Lesson (orden dentro de la semana; tipo: video | lectura | quiz)
             video   → URL de embed
             lectura → contenido rico o PDF en R2
             quiz    → lista de Question
 
+CoursePrerequisite (Course ↔ Course) — prerrequisitos definidos por el admin (estilo Moodle)
+
 Topic (ej. "Fracciones") — transversal a las semanas
   ↕ cada Lesson/Question se etiqueta con uno o más Topics
 ```
 
-Los **Topics son independientes de las semanas**: la maestría del alumno se calcula por Topic acumulando su desempeño en todos los quizzes etiquetados con él, sin importar en qué semana aparezcan.
+**Inscripción y acceso:** el alumno tiene un **año actual global** (`StudentProfile.gradeId`) y un conjunto de **materias** (`StudentSubject`). Ve/revisa los cursos de sus materias con `grade.level ≤ su año actual` ("ver para abajo"); la progresión en el frente la gatean los prerrequisitos del admin. El admin administra la inscripción y promueve de año.
+
+**XP global + por curso (Khan):** cada `XPEvent` se etiqueta con su `courseId`. El XP total (→ nivel global) y el XP por curso (→ nivel por curso) se derivan del libro de eventos.
+
+Los **Topics son independientes de las semanas**: la maestría del alumno se calcula por Topic acumulando su desempeño en todos los quizzes etiquetados con él, sin importar en qué semana/curso aparezcan.
 
 ### Preguntas extensibles (decisión explícita)
 
