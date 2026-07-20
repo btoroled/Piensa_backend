@@ -21,6 +21,7 @@ import {
   createPresignUpload,
   type PresignUpload,
 } from "./lib/r2.js";
+import { familiesRoutes } from "./modules/families/routes.js";
 import { getPrisma } from "./lib/prisma.js";
 
 export interface BuildAppOptions {
@@ -106,6 +107,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
         jwtSecret,
         presignUpload: r2Presign,
       });
+    },
+    { prefix: "/api/v1" },
+  );
+  app.register(
+    async (scope) => {
+      await familiesRoutes(scope, { prisma, jwtSecret });
     },
     { prefix: "/api/v1" },
   );
