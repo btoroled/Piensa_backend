@@ -15,6 +15,12 @@ import { authRoutes } from "./modules/auth/routes.js";
 import { adminRoutes } from "./modules/admin/routes.js";
 import { catalogRoutes } from "./modules/catalog/routes.js";
 import { topicsRoutes } from "./modules/catalog/topics-routes.js";
+import { uploadsRoutes } from "./modules/admin/uploads-routes.js";
+import {
+  loadR2Config,
+  createPresignUpload,
+  type PresignUpload,
+} from "./lib/r2.js";
 import { getPrisma } from "./lib/prisma.js";
 
 export interface BuildAppOptions {
@@ -29,6 +35,9 @@ export interface BuildAppOptions {
   // Límites de rate limiting; por defecto los de producción. Los tests los
   // ajustan (p. ej. max bajo) para ejercer el rechazo de forma determinista.
   rateLimit?: RateLimitConfig;
+  // Presigner de subida a R2; por defecto se arma desde el entorno si está
+  // configurado. Los tests inyectan un mock (no pegan a R2 real).
+  r2Presign?: PresignUpload;
 }
 
 const INSECURE_TEST_SECRET = "insecure-test-secret-do-not-use-in-prod";
@@ -51,6 +60,11 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   const jwtSecret = opts.jwtSecret ?? INSECURE_TEST_SECRET;
   const prisma = opts.prisma ?? getPrisma();
   const rateLimit = opts.rateLimit ?? DEFAULT_RATE_LIMIT;
+  // R2 opcional: si no hay config en el entorno, el presigner queda undefined y
+  // /admin/uploads responde error de configuración (la app arranca igual).
+  const r2Config = loadR2Config();
+  const r2Presign =
+    opts.r2Presign ?? (r2Config ? createPresignUpload(r2Config) : undefined);
 
   app.register(conventionsPlugin);
   // Después de conventions (para tener el x-request-id) y antes de las rutas.
@@ -82,6 +96,16 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(
     async (scope) => {
       await topicsRoutes(scope, { prisma, jwtSecret });
+    },
+    { prefix: "/api/v1" },
+  );
+  app.register(
+    async (scope) => {
+      await uploadsRoutes(scope, {
+        prisma,
+        jwtSecret,
+        presignUpload: r2Presign,
+      });
     },
     { prefix: "/api/v1" },
   );
