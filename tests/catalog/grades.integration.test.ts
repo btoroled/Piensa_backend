@@ -44,8 +44,10 @@ describe.skipIf(!dbAvailable)("CRUD /admin/grades", () => {
   const gradeIds: string[] = [];
   let subjectId: string;
   const emailTag = `g13-${randomUUID()}`;
-  // Nivel único global (los tests corren en paralelo contra la misma BD).
-  const lvl = () => Math.floor(Math.random() * 2_000_000_000);
+  // Nivel único dentro del rango del schema (≤ 1M). Los grados creados por
+  // otros archivos de test usan niveles > 1M (creación directa), así que no
+  // colisionan con estos.
+  const lvl = () => Math.floor(Math.random() * 1_000_000) + 1;
 
   beforeAll(async () => {
     app = buildApp({ jwtSecret: SECRET, prisma: db });

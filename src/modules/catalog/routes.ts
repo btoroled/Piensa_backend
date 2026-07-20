@@ -31,7 +31,7 @@ const createGradeBodySchema = {
   additionalProperties: false,
   properties: {
     name: { type: "string", minLength: 1, maxLength: 100 },
-    level: { type: "integer", minimum: 1, maximum: 100 },
+    level: { type: "integer", minimum: 1, maximum: 1000000 },
   },
 } as const;
 
@@ -41,7 +41,7 @@ const updateGradeBodySchema = {
   minProperties: 1,
   properties: {
     name: { type: "string", minLength: 1, maxLength: 100 },
-    level: { type: "integer", minimum: 1, maximum: 100 },
+    level: { type: "integer", minimum: 1, maximum: 1000000 },
   },
 } as const;
 
