@@ -24,40 +24,53 @@ const idParamsSchema = {
   properties: { id: { type: "string", pattern: UUID_PATTERN } },
 } as const;
 
+// Grade = año/nivel (Milestone 2.5): `level` ordena los años y es único.
 const createGradeBodySchema = {
   type: "object",
-  required: ["name"],
+  required: ["name", "level"],
   additionalProperties: false,
-  properties: { name: { type: "string", minLength: 1, maxLength: 100 } },
+  properties: {
+    name: { type: "string", minLength: 1, maxLength: 100 },
+    level: { type: "integer", minimum: 1, maximum: 1000000 },
+  },
 } as const;
 
 const updateGradeBodySchema = {
   type: "object",
-  required: ["name"],
   additionalProperties: false,
-  properties: { name: { type: "string", minLength: 1, maxLength: 100 } },
+  minProperties: 1,
+  properties: {
+    name: { type: "string", minLength: 1, maxLength: 100 },
+    level: { type: "integer", minimum: 1, maximum: 1000000 },
+  },
 } as const;
 
 interface IdParams {
   id: string;
 }
-interface GradeBody {
+interface CreateGradeBody {
   name: string;
+  level: number;
+}
+interface UpdateGradeBody {
+  name?: string;
+  level?: number;
 }
 
 const gradeSelect = {
   id: true,
   name: true,
+  level: true,
   createdAt: true,
   updatedAt: true,
 } as const;
 
 const createWeekBodySchema = {
   type: "object",
-  required: ["gradeId", "number", "title"],
+  required: ["courseId", "number", "title"],
   additionalProperties: false,
   properties: {
-    gradeId: { type: "string", pattern: UUID_PATTERN },
+    courseId: { type: "string", pattern: UUID_PATTERN },
     number: { type: "integer", minimum: 1, maximum: 1000 },
     title: { type: "string", minLength: 1, maxLength: 200 },
     description: { type: "string", maxLength: 2000 },
@@ -78,11 +91,11 @@ const updateWeekBodySchema = {
 const weeksQuerySchema = {
   type: "object",
   additionalProperties: false,
-  properties: { gradeId: { type: "string", pattern: UUID_PATTERN } },
+  properties: { courseId: { type: "string", pattern: UUID_PATTERN } },
 } as const;
 
 interface CreateWeekBody {
-  gradeId: string;
+  courseId: string;
   number: number;
   title: string;
   description?: string;
@@ -93,12 +106,12 @@ interface UpdateWeekBody {
   description?: string;
 }
 interface WeeksQuery {
-  gradeId?: string;
+  courseId?: string;
 }
 
 const weekSelect = {
   id: true,
-  gradeId: true,
+  courseId: true,
   number: true,
   title: true,
   description: true,
@@ -250,16 +263,22 @@ export const catalogRoutes: FastifyPluginAsync<CatalogRoutesOptions> = async (
   const adminOnly = [authz.authenticate, authz.requireRole("admin")];
 
   // ── Grados ────────────────────────────────────────────────────────────────
-  app.post<{ Body: GradeBody }>(
+  app.post<{ Body: CreateGradeBody }>(
     "/admin/grades",
     { schema: { body: createGradeBodySchema }, preHandler: adminOnly },
     async (request, reply) => {
-      const grade = await prisma.grade.create({
-        data: { name: request.body.name },
-        select: gradeSelect,
-      });
-      reply.code(201);
-      return { data: grade };
+      try {
+        const grade = await prisma.grade.create({
+          data: { name: request.body.name, level: request.body.level },
+          select: gradeSelect,
+        });
+        reply.code(201);
+        return { data: grade };
+      } catch (err) {
+        if (isPrismaError(err, "P2002"))
+          throw new AppError("CONFLICT", "Ya existe un grado con ese nivel.");
+        throw err;
+      }
     },
   );
 
@@ -283,7 +302,7 @@ export const catalogRoutes: FastifyPluginAsync<CatalogRoutesOptions> = async (
     },
   );
 
-  app.patch<{ Params: IdParams; Body: GradeBody }>(
+  app.patch<{ Params: IdParams; Body: UpdateGradeBody }>(
     "/admin/grades/:id",
     {
       schema: { params: idParamsSchema, body: updateGradeBodySchema },
@@ -293,13 +312,15 @@ export const catalogRoutes: FastifyPluginAsync<CatalogRoutesOptions> = async (
       try {
         const grade = await prisma.grade.update({
           where: { id: request.params.id },
-          data: { name: request.body.name },
+          data: { name: request.body.name, level: request.body.level },
           select: gradeSelect,
         });
         return { data: grade };
       } catch (err) {
         if (isPrismaError(err, "P2025"))
           throw new AppError("NOT_FOUND", "Grado no encontrado.");
+        if (isPrismaError(err, "P2002"))
+          throw new AppError("CONFLICT", "Ya existe un grado con ese nivel.");
         throw err;
       }
     },
@@ -315,10 +336,10 @@ export const catalogRoutes: FastifyPluginAsync<CatalogRoutesOptions> = async (
       } catch (err) {
         if (isPrismaError(err, "P2025"))
           throw new AppError("NOT_FOUND", "Grado no encontrado.");
-        // Semanas colgando o alumnos asignados (FK Restrict) → CONFLICT.
+        // Cursos colgando o alumnos asignados (FK Restrict) → CONFLICT.
         mapDeleteRestrict(
           err,
-          "No se puede borrar el grado: tiene semanas o alumnos asociados.",
+          "No se puede borrar el grado: tiene cursos o alumnos asociados.",
         );
       }
     },
@@ -340,12 +361,12 @@ export const catalogRoutes: FastifyPluginAsync<CatalogRoutesOptions> = async (
         if (isPrismaError(err, "P2003"))
           throw new AppError(
             "VALIDATION_ERROR",
-            "El grado indicado no existe.",
+            "El curso indicado no existe.",
           );
         if (isPrismaError(err, "P2002"))
           throw new AppError(
             "CONFLICT",
-            "Ya existe una semana con ese número en el grado.",
+            "Ya existe una semana con ese número en el curso.",
           );
         throw err;
       }
@@ -357,9 +378,11 @@ export const catalogRoutes: FastifyPluginAsync<CatalogRoutesOptions> = async (
     { schema: { querystring: weeksQuerySchema }, preHandler: adminOnly },
     async (request) => ({
       data: await prisma.week.findMany({
-        where: request.query.gradeId ? { gradeId: request.query.gradeId } : {},
+        where: request.query.courseId
+          ? { courseId: request.query.courseId }
+          : {},
         select: weekSelect,
-        orderBy: [{ gradeId: "asc" }, { number: "asc" }],
+        orderBy: [{ courseId: "asc" }, { number: "asc" }],
       }),
     }),
   );

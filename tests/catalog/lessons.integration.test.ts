@@ -42,6 +42,7 @@ describe.skipIf(!dbAvailable)("CRUD /admin/lessons + reorder", () => {
   let adminToken: string;
   let parentToken: string;
   let gradeId: string;
+  let courseId: string;
   let weekId: string;
   const emailTag = `l14-${randomUUID()}`;
 
@@ -75,18 +76,32 @@ describe.skipIf(!dbAvailable)("CRUD /admin/lessons + reorder", () => {
       familyId: fam.id,
     });
     const grade = await db.grade.create({
-      data: { name: `Grado-${emailTag}` },
+      data: {
+        name: `Grado-${emailTag}`,
+        level: Math.floor(Math.random() * 2_000_000_000),
+      },
     });
     gradeId = grade.id;
+    const subject = await db.subject.create({
+      data: { name: `Mat-${emailTag}` },
+    });
+    const course = await db.course.create({
+      data: {
+        subjectId: subject.id,
+        gradeId,
+        title: `Matemáticas-${emailTag}`,
+      },
+    });
+    courseId = course.id;
     const week = await db.week.create({
-      data: { gradeId, number: 1, title: "S1" },
+      data: { courseId, number: 1, title: "S1" },
     });
     weekId = week.id;
   });
 
   afterAll(async () => {
     const weeks = await db.week.findMany({
-      where: { gradeId },
+      where: { courseId },
       select: { id: true },
     });
     const wids = weeks.map((w) => w.id);
@@ -98,7 +113,9 @@ describe.skipIf(!dbAvailable)("CRUD /admin/lessons + reorder", () => {
       where: { lessonId: { in: lessons.map((l) => l.id) } },
     });
     await db.lesson.deleteMany({ where: { weekId: { in: wids } } });
-    await db.week.deleteMany({ where: { gradeId } });
+    await db.week.deleteMany({ where: { courseId } });
+    await db.course.deleteMany({ where: { id: courseId } });
+    await db.subject.deleteMany({ where: { name: `Mat-${emailTag}` } });
     await db.grade.deleteMany({ where: { id: gradeId } });
     await db.family.deleteMany({ where: { name: `Fam-${emailTag}` } });
     await db.user.deleteMany({ where: { email: { contains: emailTag } } });
@@ -211,7 +228,7 @@ describe.skipIf(!dbAvailable)("CRUD /admin/lessons + reorder", () => {
 
   test("reorder aplica el nuevo orden (atómico)", async () => {
     const w = await db.week.create({
-      data: { gradeId, number: 50, title: "R" },
+      data: { courseId, number: 50, title: "R" },
     });
     const ids: string[] = [];
     for (const n of [1, 2, 3]) {
@@ -231,7 +248,7 @@ describe.skipIf(!dbAvailable)("CRUD /admin/lessons + reorder", () => {
 
   test("reorder con un ID de otra semana → rechazo total, nada cambia", async () => {
     const w = await db.week.create({
-      data: { gradeId, number: 51, title: "R2" },
+      data: { courseId, number: 51, title: "R2" },
     });
     const a = await db.lesson.create({
       data: { weekId: w.id, order: 1, type: "quiz" },
@@ -261,7 +278,7 @@ describe.skipIf(!dbAvailable)("CRUD /admin/lessons + reorder", () => {
 
   test("reorder incompleto (falta una) → rechazo", async () => {
     const w = await db.week.create({
-      data: { gradeId, number: 52, title: "R3" },
+      data: { courseId, number: 52, title: "R3" },
     });
     const a = await db.lesson.create({
       data: { weekId: w.id, order: 1, type: "quiz" },

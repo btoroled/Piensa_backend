@@ -42,7 +42,12 @@ describe.skipIf(!dbAvailable)("CRUD /admin/grades", () => {
   let adminToken: string;
   let parentToken: string;
   const gradeIds: string[] = [];
+  let subjectId: string;
   const emailTag = `g13-${randomUUID()}`;
+  // Nivel único dentro del rango del schema (≤ 1M). Los grados creados por
+  // otros archivos de test usan niveles > 1M (creación directa), así que no
+  // colisionan con estos.
+  const lvl = () => Math.floor(Math.random() * 1_000_000) + 1;
 
   beforeAll(async () => {
     app = buildApp({ jwtSecret: SECRET, prisma: db });
@@ -73,10 +78,15 @@ describe.skipIf(!dbAvailable)("CRUD /admin/grades", () => {
       role: "parent",
       familyId: fam.id,
     });
+    const subject = await db.subject.create({
+      data: { name: `Mat-${emailTag}` },
+    });
+    subjectId = subject.id;
   });
 
   afterAll(async () => {
-    await db.week.deleteMany({ where: { gradeId: { in: gradeIds } } });
+    await db.course.deleteMany({ where: { gradeId: { in: gradeIds } } });
+    await db.subject.deleteMany({ where: { name: `Mat-${emailTag}` } });
     await db.grade.deleteMany({ where: { id: { in: gradeIds } } });
     await db.family.deleteMany({ where: { name: `Fam-${emailTag}` } });
     await db.user.deleteMany({
@@ -97,6 +107,7 @@ describe.skipIf(!dbAvailable)("CRUD /admin/grades", () => {
   test("crear/leer/actualizar un grado (admin)", async () => {
     const created = await call("POST", "/admin/grades", adminToken, {
       name: "3° Primaria",
+      level: lvl(),
     });
     expect(created.statusCode).toBe(201);
     const id = created.json().data.id;
@@ -112,24 +123,33 @@ describe.skipIf(!dbAvailable)("CRUD /admin/grades", () => {
   });
 
   test("nombre vacío → VALIDATION_ERROR", async () => {
-    const res = await call("POST", "/admin/grades", adminToken, { name: "" });
+    const res = await call("POST", "/admin/grades", adminToken, {
+      name: "",
+      level: lvl(),
+    });
     expect(res.statusCode).toBe(400);
     expect(res.json().error.code).toBe("VALIDATION_ERROR");
   });
 
   test("no-admin (parent) → FORBIDDEN", async () => {
-    const res = await call("POST", "/admin/grades", parentToken, { name: "X" });
+    const res = await call("POST", "/admin/grades", parentToken, {
+      name: "X",
+      level: lvl(),
+    });
     expect(res.statusCode).toBe(403);
     expect(res.json().error.code).toBe("FORBIDDEN");
   });
 
-  test("borrar un grado con semanas → CONFLICT", async () => {
+  test("borrar un grado con cursos → CONFLICT", async () => {
     const g = await call("POST", "/admin/grades", adminToken, {
-      name: "Con sem",
+      name: "Con cursos",
+      level: lvl(),
     });
     const gid = g.json().data.id;
     gradeIds.push(gid);
-    await db.week.create({ data: { gradeId: gid, number: 1, title: "S1" } });
+    await db.course.create({
+      data: { subjectId, gradeId: gid, title: "Curso" },
+    });
 
     const del = await call("DELETE", `/admin/grades/${gid}`, adminToken);
     expect(del.statusCode).toBe(409);
@@ -139,6 +159,7 @@ describe.skipIf(!dbAvailable)("CRUD /admin/grades", () => {
   test("borrar un grado vacío → 200 y luego 404", async () => {
     const g = await call("POST", "/admin/grades", adminToken, {
       name: "Vacío",
+      level: lvl(),
     });
     const gid = g.json().data.id;
     const del = await call("DELETE", `/admin/grades/${gid}`, adminToken);

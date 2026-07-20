@@ -116,8 +116,8 @@ model StudentProfile {
   name              String
   avatar            String
   pinHash           String
-  // Grado asignado. Nullable hasta que el admin lo asigne (Spec §4). FK a Grade
-  // con Restrict: no se puede borrar un grado con alumnos asignados (ISSUE-12).
+  // Año actual del alumno (Milestone 2.5; Grade = año/nivel). Nullable hasta que
+  // el admin lo asigne. FK Restrict: no se borra un grado con alumnos.
   gradeId           String?   @db.Uuid
   failedPinAttempts Int       @default(0)
   pinLockedUntil    DateTime?
@@ -128,9 +128,12 @@ model StudentProfile {
   // StudentProfiles (criterio de aceptación ISSUE-05).
   family Family @relation(fields: [familyId], references: [id], onDelete: Restrict)
 
-  // Grado asignado (ISSUE-12). Restrict: no se puede borrar un grado con
-  // alumnos asignados. La relación es opcional (gradeId nullable).
+  // Año actual (Milestone 2.5). Restrict: no se puede borrar un grado con
+  // alumnos. La relación es opcional (gradeId nullable).
   grade Grade? @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+
+  // Materias en las que está inscrito el alumno (Milestone 2.5).
+  subjects StudentSubject[]
 
   @@index([familyId])
   @@index([gradeId])
@@ -141,35 +144,98 @@ model StudentProfile {
 // por-alumno: la completitud y el progreso viven en ISSUE-19/20. La jerarquía se
 // protege con onDelete: Restrict (borrar con contenido → rechazo explícito).
 
-// Grado escolar (ej. "3° Primaria"): raíz del árbol de contenido y unidad que se
-// asigna a un StudentProfile.
+// Año/Nivel escolar (ej. "3° Primaria"). Milestone 2.5: ya NO cuelga contenido
+// directo; el contenido cuelga de Course (materia×año). `level` ordena los años
+// para resolver el acceso "para abajo" del alumno.
 model Grade {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
+  level     Int      @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  weeks    Week[]
+  courses  Course[]
   // Restrict: no se puede borrar un grado que tenga alumnos asignados.
   students StudentProfile[]
 }
 
-// Semana: las "secciones" estilo Duolingo dentro de un grado. `number` ordena las
-// semanas y es único por grado.
+// Materia transversal a los años (Matemáticas, Ciencias…). Milestone 2.5.
+model Subject {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  courses  Course[]
+  students StudentSubject[]
+}
+
+// Curso = materia × año (ej. "Matemáticas 3°"): unidad de contenido y de XP
+// (Milestone 2.5). Único por (materia, año).
+model Course {
+  id          String   @id @default(uuid()) @db.Uuid
+  subjectId   String   @db.Uuid
+  gradeId     String   @db.Uuid
+  title       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  subject       Subject              @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  grade         Grade                @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+  weeks         Week[]
+  // Prerrequisitos salientes de este curso y cursos que lo requieren.
+  prerequisites CoursePrerequisite[] @relation("CourseToPrereq")
+  requiredBy    CoursePrerequisite[] @relation("PrereqToCourse")
+
+  @@unique([subjectId, gradeId])
+  @@index([subjectId])
+  @@index([gradeId])
+}
+
+// Prerrequisito curso→curso, definido por el admin (estilo Moodle). Cascade
+// hacia el curso dueño de la arista; Restrict hacia el curso requerido (no se
+// puede borrar un curso del que otro depende).
+model CoursePrerequisite {
+  courseId         String @db.Uuid
+  requiresCourseId String @db.Uuid
+
+  course   Course @relation("CourseToPrereq", fields: [courseId], references: [id], onDelete: Cascade)
+  requires Course @relation("PrereqToCourse", fields: [requiresCourseId], references: [id], onDelete: Restrict)
+
+  @@id([courseId, requiresCourseId])
+  @@index([requiresCourseId])
+}
+
+// Inscripción del alumno a una materia (Milestone 2.5). Cascade hacia el alumno;
+// Restrict hacia la materia (no borrar una materia en uso).
+model StudentSubject {
+  studentProfileId String @db.Uuid
+  subjectId        String @db.Uuid
+
+  student StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  subject Subject        @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+
+  @@id([studentProfileId, subjectId])
+  @@index([subjectId])
+}
+
+// Semana: las "secciones" estilo Duolingo dentro de un curso (Milestone 2.5).
+// `number` ordena las semanas y es único por curso.
 model Week {
   id          String   @id @default(uuid()) @db.Uuid
-  gradeId     String   @db.Uuid
+  courseId    String   @db.Uuid
   number      Int
   title       String
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  grade   Grade    @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+  course  Course   @relation(fields: [courseId], references: [id], onDelete: Restrict)
   lessons Lesson[]
 
-  @@unique([gradeId, number])
-  @@index([gradeId])
+  @@unique([courseId, number])
+  @@index([courseId])
 }
 
 // Lección: unidad de contenido dentro de una semana. `order` la posiciona y es

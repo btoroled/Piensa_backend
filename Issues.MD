@@ -194,7 +194,35 @@ Rol `super_admin` que hereda todo lo de `admin` y además gestiona cuentas admin
 
 ---
 
+## Milestone 2.5 — Catálogo por materias, cursos e inscripción
+
+> **Nuevo (2026-07-19).** Corrige el modelo del catálogo: un alumno cursa **varias materias por año**; cada materia-año es un **curso** con su propio contenido y XP (estilo Khan), con prerrequisitos definidos por el admin. Va **entre M2 y M3** (M3 se apoya en el concepto de curso). Diseño: `docs/superpowers/specs/2026-07-19-milestone-2.5-subjects-courses-enrollment.md`. Actualiza el spec §4. Catálogo vacío → la migración reestructura sin migrar datos.
+
+### ISSUE-36: Modelo de materias, cursos e inscripción
+**Spec:** §4 (Catálogo) · **Depende de:** ISSUE-12
+Migración Prisma: `Subject` (name único), `Course` (subjectId, gradeId, title, `@@unique([subjectId, gradeId])`), `CoursePrerequisite` (courseId ↔ requiresCourseId), `StudentSubject` (studentProfileId ↔ subjectId); `Grade.level` (Int único, para ordenar años); **mover `Week` de `gradeId` a `courseId`**. `StudentProfile.gradeId` pasa a significar "año actual".
+**Criterios de aceptación:**
+- Constraints por test: un curso único por materia×año; `Week.courseId` con FK Restrict; prerrequisito sin ciclos (validado en servicio, ISSUE-37); borrar una materia/curso en uso → rechazo.
+- Migración aplica limpio sobre catálogo vacío.
+
+### ISSUE-37: CRUD de materias y cursos
+**Spec:** §5 (Admin) · **Depende de:** ISSUE-13, ISSUE-36
+`CRUD /admin/subjects` y `/admin/courses` (+ gestionar prerrequisitos, validando que no haya ciclos). Re-anclar `/admin/weeks` a `courseId`. Solo admin.
+**Criterios de aceptación:**
+- CRUD con validación JSON Schema; borrar materia/curso en uso → `CONFLICT`.
+- Prerrequisito que genera ciclo → `VALIDATION_ERROR`.
+
+### ISSUE-38: Inscripción del alumno (año + materias)
+**Spec:** §2, §5 (Admin) · **Depende de:** ISSUE-18, ISSUE-36
+Al crear/editar familias/alumnos, el admin asigna **año** (`gradeId`) + **materias** (`StudentSubject`), y promueve de año. CRUD de la inscripción por alumno.
+**Criterios de aceptación:**
+- Crear alumno con año + materias; el acceso "para abajo" (cursos de sus materias con `grade.level ≤` su año) queda consultable.
+
+---
+
 ## Milestone 3 — Experiencia del alumno: progreso y gamificación
+
+> **Depende de Milestone 2.5 (2026-07-19):** M3 se apoya en **cursos** (materia×año). En concreto: `XPEvent` lleva `courseId` (XP total + por curso, ISSUE-19/25); `GET /me/path` (ISSUE-20) es **por curso** (cursos accesibles = materias × año≤actual, con desbloqueo por prerrequisito + orden); el resumen (ISSUE-29) muestra XP/nivel por curso y total.
 
 > **Notas de planificación anticipada (2026-07-17):** `docs/superpowers/specs/2026-07-17-milestone-3-planning-notes.md` recoge decisiones tomadas durante Milestone 2 que aplican acá: (1) el **follow-up del `GET /admin/overview`** (métrica "actividad últimos 7 días", diferida de ISSUE-18) se agrega una vez exista el progreso; (2) el tipo de pregunta **"desarrollo"** (respuesta abierta) corregido por **similitud semántica con un modelo local** (no API externa, por privacidad de menores), como extensión del motor de corrección (ISSUE-23) vía el registro de tipos.
 

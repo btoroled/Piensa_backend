@@ -43,6 +43,7 @@ describe.skipIf(!dbAvailable)("CRUD /admin/questions", () => {
   let adminToken: string;
   let parentToken: string;
   let gradeId: string;
+  let courseId: string;
   let quizLessonId: string;
   let videoLessonId: string;
   const emailTag = `q15-${randomUUID()}`;
@@ -77,11 +78,25 @@ describe.skipIf(!dbAvailable)("CRUD /admin/questions", () => {
       familyId: fam.id,
     });
     const grade = await db.grade.create({
-      data: { name: `Grado-${emailTag}` },
+      data: {
+        name: `Grado-${emailTag}`,
+        level: Math.floor(Math.random() * 2_000_000_000),
+      },
     });
     gradeId = grade.id;
+    const subject = await db.subject.create({
+      data: { name: `Mat-${emailTag}` },
+    });
+    const course = await db.course.create({
+      data: {
+        subjectId: subject.id,
+        gradeId,
+        title: `Matemáticas-${emailTag}`,
+      },
+    });
+    courseId = course.id;
     const week = await db.week.create({
-      data: { gradeId, number: 1, title: "S1" },
+      data: { courseId, number: 1, title: "S1" },
     });
     const quiz = await db.lesson.create({
       data: { weekId: week.id, order: 1, type: "quiz" },
@@ -100,7 +115,7 @@ describe.skipIf(!dbAvailable)("CRUD /admin/questions", () => {
 
   afterAll(async () => {
     const weeks = await db.week.findMany({
-      where: { gradeId },
+      where: { courseId },
       select: { id: true },
     });
     const wids = weeks.map((w) => w.id);
@@ -112,7 +127,9 @@ describe.skipIf(!dbAvailable)("CRUD /admin/questions", () => {
       where: { lessonId: { in: lessons.map((l) => l.id) } },
     });
     await db.lesson.deleteMany({ where: { weekId: { in: wids } } });
-    await db.week.deleteMany({ where: { gradeId } });
+    await db.week.deleteMany({ where: { courseId } });
+    await db.course.deleteMany({ where: { id: courseId } });
+    await db.subject.deleteMany({ where: { name: `Mat-${emailTag}` } });
     await db.grade.deleteMany({ where: { id: gradeId } });
     await db.family.deleteMany({ where: { name: `Fam-${emailTag}` } });
     await db.user.deleteMany({ where: { email: { contains: emailTag } } });

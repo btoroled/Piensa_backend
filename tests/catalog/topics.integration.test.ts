@@ -42,6 +42,7 @@ describe.skipIf(!dbAvailable)("CRUD /admin/topics + etiquetado", () => {
   let adminToken: string;
   let parentToken: string;
   let gradeId: string;
+  let courseId: string;
   let lessonId: string;
   let questionId: string;
   const topicIds: string[] = [];
@@ -76,10 +77,20 @@ describe.skipIf(!dbAvailable)("CRUD /admin/topics + etiquetado", () => {
       role: "parent",
       familyId: fam.id,
     });
-    const grade = await db.grade.create({ data: { name: `Grado-${tag}` } });
+    const grade = await db.grade.create({
+      data: {
+        name: `Grado-${tag}`,
+        level: Math.floor(Math.random() * 2_000_000_000),
+      },
+    });
     gradeId = grade.id;
+    const subject = await db.subject.create({ data: { name: `Mat-${tag}` } });
+    const course = await db.course.create({
+      data: { subjectId: subject.id, gradeId, title: `Matemáticas-${tag}` },
+    });
+    courseId = course.id;
     const week = await db.week.create({
-      data: { gradeId, number: 1, title: "S1" },
+      data: { courseId, number: 1, title: "S1" },
     });
     const lesson = await db.lesson.create({
       data: { weekId: week.id, order: 1, type: "quiz" },
@@ -102,7 +113,9 @@ describe.skipIf(!dbAvailable)("CRUD /admin/topics + etiquetado", () => {
     await db.questionTopic.deleteMany({ where: { questionId } });
     await db.question.deleteMany({ where: { lessonId } });
     await db.lesson.deleteMany({ where: { id: lessonId } });
-    await db.week.deleteMany({ where: { gradeId } });
+    await db.week.deleteMany({ where: { courseId } });
+    await db.course.deleteMany({ where: { id: courseId } });
+    await db.subject.deleteMany({ where: { name: `Mat-${tag}` } });
     await db.grade.deleteMany({ where: { id: gradeId } });
     await db.topic.deleteMany({ where: { name: { contains: tag } } });
     await db.family.deleteMany({ where: { name: `Fam-${tag}` } });

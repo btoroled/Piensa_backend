@@ -35,15 +35,46 @@ describe("schema.prisma — modelo del catálogo", () => {
     expect(schema).not.toMatch(/enum\s+QuestionType/);
   });
 
-  test("Week cuelga de Grade con borrado restringido y número único por grado", () => {
+  test("Week cuelga de Course con borrado restringido y número único por curso (M2.5)", () => {
     const week = modelBlock("Week");
-    expect(week).toMatch(/gradeId\s+String/);
+    expect(week).toMatch(/courseId\s+String/);
     expect(week).toMatch(/title\s+String/);
     expect(week).toMatch(/description\s+String\?/);
     expect(week).toMatch(
+      /@relation\([^)]*fields:\s*\[courseId\][^)]*onDelete:\s*Restrict[^)]*\)/,
+    );
+    expect(week).toMatch(/@@unique\(\[courseId,\s*number\]\)/);
+  });
+
+  test("materias, cursos, prerrequisitos e inscripción (Milestone 2.5)", () => {
+    const subject = modelBlock("Subject");
+    expect(subject).toMatch(/name\s+String\s+@unique/);
+
+    const course = modelBlock("Course");
+    expect(course).toMatch(/@@unique\(\[subjectId,\s*gradeId\]\)/);
+    expect(course).toMatch(
+      /@relation\([^)]*fields:\s*\[subjectId\][^)]*onDelete:\s*Restrict[^)]*\)/,
+    );
+    expect(course).toMatch(
       /@relation\([^)]*fields:\s*\[gradeId\][^)]*onDelete:\s*Restrict[^)]*\)/,
     );
-    expect(week).toMatch(/@@unique\(\[gradeId,\s*number\]\)/);
+
+    const prereq = modelBlock("CoursePrerequisite");
+    expect(prereq).toMatch(/@@id\(\[courseId,\s*requiresCourseId\]\)/);
+    // Cascade hacia el curso dueño de la arista; Restrict hacia el requerido.
+    expect(prereq).toMatch(
+      /@relation\([^)]*"CourseToPrereq"[^)]*onDelete:\s*Cascade[^)]*\)/,
+    );
+    expect(prereq).toMatch(
+      /@relation\([^)]*"PrereqToCourse"[^)]*onDelete:\s*Restrict[^)]*\)/,
+    );
+
+    const studentSubject = modelBlock("StudentSubject");
+    expect(studentSubject).toMatch(/@@id\(\[studentProfileId,\s*subjectId\]\)/);
+
+    // Grade pasa a ser el año/nivel: gana `level` para ordenar años.
+    const grade = modelBlock("Grade");
+    expect(grade).toMatch(/level\s+Int\s+@unique/);
   });
 
   test("Lesson cuelga de Week (Restrict), tipa el type y guarda campos por tipo nullable", () => {
