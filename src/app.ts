@@ -22,6 +22,7 @@ import {
   type PresignUpload,
 } from "./lib/r2.js";
 import { familiesRoutes } from "./modules/families/routes.js";
+import { subjectsCoursesRoutes } from "./modules/catalog/subjects-courses-routes.js";
 import { getPrisma } from "./lib/prisma.js";
 
 export interface BuildAppOptions {
@@ -113,6 +114,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(
     async (scope) => {
       await familiesRoutes(scope, { prisma, jwtSecret });
+    },
+    { prefix: "/api/v1" },
+  );
+  app.register(
+    async (scope) => {
+      await subjectsCoursesRoutes(scope, { prisma, jwtSecret });
     },
     { prefix: "/api/v1" },
   );
