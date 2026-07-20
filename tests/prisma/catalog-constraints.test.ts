@@ -43,12 +43,37 @@ afterAll(async () => {
 const client = prisma as PrismaClient;
 
 describe.skipIf(!dbAvailable)("Catálogo — constraints contra BD", () => {
-  test("order duplicado de lecciones en la misma semana falla (único por semana)", async () => {
+  // Milestone 2.5: las semanas cuelgan de un Course (materia×año). Helpers para
+  // armar y limpiar el grade→subject→course sobre el que se cuelgan las semanas.
+  async function makeCourse() {
     const grade = await client.grade.create({
-      data: { name: `Grado ${randomUUID()}` },
+      data: {
+        name: `Grado ${randomUUID()}`,
+        level: Math.floor(Math.random() * 2_000_000_000),
+      },
     });
+    const subject = await client.subject.create({
+      data: { name: `Mat ${randomUUID()}` },
+    });
+    const course = await client.course.create({
+      data: { subjectId: subject.id, gradeId: grade.id, title: "Curso" },
+    });
+    return { gradeId: grade.id, subjectId: subject.id, courseId: course.id };
+  }
+  async function cleanupCourse(c: {
+    gradeId: string;
+    subjectId: string;
+    courseId: string;
+  }) {
+    await client.course.delete({ where: { id: c.courseId } });
+    await client.subject.delete({ where: { id: c.subjectId } });
+    await client.grade.delete({ where: { id: c.gradeId } });
+  }
+
+  test("order duplicado de lecciones en la misma semana falla (único por semana)", async () => {
+    const c = await makeCourse();
     const week = await client.week.create({
-      data: { gradeId: grade.id, number: 1, title: "Semana 1" },
+      data: { courseId: c.courseId, number: 1, title: "Semana 1" },
     });
     const first = await client.lesson.create({
       data: { weekId: week.id, order: 1, type: "video" },
@@ -62,16 +87,14 @@ describe.skipIf(!dbAvailable)("Catálogo — constraints contra BD", () => {
     } finally {
       await client.lesson.delete({ where: { id: first.id } });
       await client.week.delete({ where: { id: week.id } });
-      await client.grade.delete({ where: { id: grade.id } });
+      await cleanupCourse(c);
     }
   });
 
   test("order duplicado de preguntas en la misma lección falla (único por lección)", async () => {
-    const grade = await client.grade.create({
-      data: { name: `Grado ${randomUUID()}` },
-    });
+    const c = await makeCourse();
     const week = await client.week.create({
-      data: { gradeId: grade.id, number: 1, title: "Semana 1" },
+      data: { courseId: c.courseId, number: 1, title: "Semana 1" },
     });
     const lesson = await client.lesson.create({
       data: { weekId: week.id, order: 1, type: "quiz" },
@@ -101,33 +124,29 @@ describe.skipIf(!dbAvailable)("Catálogo — constraints contra BD", () => {
       await client.question.delete({ where: { id: first.id } });
       await client.lesson.delete({ where: { id: lesson.id } });
       await client.week.delete({ where: { id: week.id } });
-      await client.grade.delete({ where: { id: grade.id } });
+      await cleanupCourse(c);
     }
   });
 
-  test("borrar un Grade con Weeks falla (FK Restrict, sin cascada)", async () => {
-    const grade = await client.grade.create({
-      data: { name: `Grado ${randomUUID()}` },
-    });
+  test("borrar un Course con Weeks falla (FK Restrict, sin cascada)", async () => {
+    const c = await makeCourse();
     const week = await client.week.create({
-      data: { gradeId: grade.id, number: 1, title: "Semana 1" },
+      data: { courseId: c.courseId, number: 1, title: "Semana 1" },
     });
     try {
       await expect(
-        client.grade.delete({ where: { id: grade.id } }),
+        client.course.delete({ where: { id: c.courseId } }),
       ).rejects.toMatchObject({ code: "P2003" });
     } finally {
       await client.week.delete({ where: { id: week.id } });
-      await client.grade.delete({ where: { id: grade.id } });
+      await cleanupCourse(c);
     }
   });
 
   test("borrar una Lesson con Questions falla (FK Restrict)", async () => {
-    const grade = await client.grade.create({
-      data: { name: `Grado ${randomUUID()}` },
-    });
+    const c = await makeCourse();
     const week = await client.week.create({
-      data: { gradeId: grade.id, number: 1, title: "Semana 1" },
+      data: { courseId: c.courseId, number: 1, title: "Semana 1" },
     });
     const lesson = await client.lesson.create({
       data: { weekId: week.id, order: 1, type: "quiz" },
@@ -149,16 +168,14 @@ describe.skipIf(!dbAvailable)("Catálogo — constraints contra BD", () => {
       await client.question.delete({ where: { id: question.id } });
       await client.lesson.delete({ where: { id: lesson.id } });
       await client.week.delete({ where: { id: week.id } });
-      await client.grade.delete({ where: { id: grade.id } });
+      await cleanupCourse(c);
     }
   });
 
   test("borrar un Topic etiquetado en una lección falla (FK Restrict, ISSUE-16)", async () => {
-    const grade = await client.grade.create({
-      data: { name: `Grado ${randomUUID()}` },
-    });
+    const c = await makeCourse();
     const week = await client.week.create({
-      data: { gradeId: grade.id, number: 1, title: "Semana 1" },
+      data: { courseId: c.courseId, number: 1, title: "Semana 1" },
     });
     const lesson = await client.lesson.create({
       data: { weekId: week.id, order: 1, type: "video" },
@@ -180,16 +197,14 @@ describe.skipIf(!dbAvailable)("Catálogo — constraints contra BD", () => {
       await client.topic.delete({ where: { id: topic.id } });
       await client.lesson.delete({ where: { id: lesson.id } });
       await client.week.delete({ where: { id: week.id } });
-      await client.grade.delete({ where: { id: grade.id } });
+      await cleanupCourse(c);
     }
   });
 
   test("borrar una Lesson con tags borra sus links pero no el Topic (Cascade→link, Restrict→topic)", async () => {
-    const grade = await client.grade.create({
-      data: { name: `Grado ${randomUUID()}` },
-    });
+    const c = await makeCourse();
     const week = await client.week.create({
-      data: { gradeId: grade.id, number: 1, title: "Semana 1" },
+      data: { courseId: c.courseId, number: 1, title: "Semana 1" },
     });
     const lesson = await client.lesson.create({
       data: { weekId: week.id, order: 1, type: "video" },
@@ -215,7 +230,7 @@ describe.skipIf(!dbAvailable)("Catálogo — constraints contra BD", () => {
     } finally {
       await client.topic.delete({ where: { id: topic.id } });
       await client.week.delete({ where: { id: week.id } });
-      await client.grade.delete({ where: { id: grade.id } });
+      await cleanupCourse(c);
     }
   });
 });

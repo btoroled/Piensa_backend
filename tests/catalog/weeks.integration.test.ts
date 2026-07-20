@@ -40,6 +40,7 @@ describe.skipIf(!dbAvailable)("CRUD /admin/weeks", () => {
   let adminToken: string;
   let parentToken: string;
   let gradeId: string;
+  let courseId: string;
   const emailTag = `w13-${randomUUID()}`;
 
   beforeAll(async () => {
@@ -72,21 +73,37 @@ describe.skipIf(!dbAvailable)("CRUD /admin/weeks", () => {
       familyId: fam.id,
     });
     const grade = await db.grade.create({
-      data: { name: `Grado-${emailTag}` },
+      data: {
+        name: `Grado-${emailTag}`,
+        level: Math.floor(Math.random() * 2_000_000_000),
+      },
     });
     gradeId = grade.id;
+    const subject = await db.subject.create({
+      data: { name: `Mat-${emailTag}` },
+    });
+    const course = await db.course.create({
+      data: {
+        subjectId: subject.id,
+        gradeId,
+        title: `Matemáticas-${emailTag}`,
+      },
+    });
+    courseId = course.id;
   });
 
   afterAll(async () => {
-    // Orden por FK Restrict: lecciones → semanas → grado → familia → users.
+    // Orden por FK Restrict: lección → semana → curso → materia → grado → familia.
     const weeks = await db.week.findMany({
-      where: { gradeId },
+      where: { courseId },
       select: { id: true },
     });
     await db.lesson.deleteMany({
       where: { weekId: { in: weeks.map((w) => w.id) } },
     });
-    await db.week.deleteMany({ where: { gradeId } });
+    await db.week.deleteMany({ where: { courseId } });
+    await db.course.deleteMany({ where: { id: courseId } });
+    await db.subject.deleteMany({ where: { name: `Mat-${emailTag}` } });
     await db.grade.deleteMany({ where: { id: gradeId } });
     await db.family.deleteMany({ where: { name: `Fam-${emailTag}` } });
     await db.user.deleteMany({ where: { email: { contains: emailTag } } });
@@ -104,7 +121,7 @@ describe.skipIf(!dbAvailable)("CRUD /admin/weeks", () => {
 
   test("crear/listar/actualizar semana (admin)", async () => {
     const created = await call("POST", "/admin/weeks", adminToken, {
-      gradeId,
+      courseId,
       number: 1,
       title: "Intro",
     });
@@ -113,7 +130,7 @@ describe.skipIf(!dbAvailable)("CRUD /admin/weeks", () => {
 
     const list = await call(
       "GET",
-      `/admin/weeks?gradeId=${gradeId}`,
+      `/admin/weeks?courseId=${courseId}`,
       adminToken,
     );
     expect(list.json().data.length).toBeGreaterThanOrEqual(1);
@@ -124,9 +141,9 @@ describe.skipIf(!dbAvailable)("CRUD /admin/weeks", () => {
     expect(upd.json().data.title).toBe("Introducción");
   });
 
-  test("gradeId inexistente → VALIDATION_ERROR", async () => {
+  test("courseId inexistente → VALIDATION_ERROR", async () => {
     const res = await call("POST", "/admin/weeks", adminToken, {
-      gradeId: randomUUID(),
+      courseId: randomUUID(),
       number: 9,
       title: "X",
     });
@@ -134,14 +151,14 @@ describe.skipIf(!dbAvailable)("CRUD /admin/weeks", () => {
     expect(res.json().error.code).toBe("VALIDATION_ERROR");
   });
 
-  test("número duplicado en el grado → CONFLICT", async () => {
+  test("número duplicado en el curso → CONFLICT", async () => {
     await call("POST", "/admin/weeks", adminToken, {
-      gradeId,
+      courseId,
       number: 5,
       title: "A",
     });
     const dup = await call("POST", "/admin/weeks", adminToken, {
-      gradeId,
+      courseId,
       number: 5,
       title: "B",
     });
@@ -151,7 +168,7 @@ describe.skipIf(!dbAvailable)("CRUD /admin/weeks", () => {
 
   test("no-admin → FORBIDDEN", async () => {
     const res = await call("POST", "/admin/weeks", parentToken, {
-      gradeId,
+      courseId,
       number: 2,
       title: "X",
     });
@@ -161,7 +178,7 @@ describe.skipIf(!dbAvailable)("CRUD /admin/weeks", () => {
 
   test("borrar semana con lecciones → CONFLICT", async () => {
     const w = await call("POST", "/admin/weeks", adminToken, {
-      gradeId,
+      courseId,
       number: 7,
       title: "Con lección",
     });
