@@ -83,7 +83,9 @@ describe.skipIf(!dbAvailable)("gestión de familias (admin)", () => {
       select: { id: true },
     });
     const fids = fams.map((f) => f.id);
+    // Borrar alumnos cascada sus StudentSubject; luego se puede borrar la materia.
     await db.studentProfile.deleteMany({ where: { familyId: { in: fids } } });
+    await db.subject.deleteMany({ where: { name: { contains: uniq } } });
     await db.family.deleteMany({ where: { id: { in: fids } } });
     await db.user.deleteMany({ where: { email: { contains: uniq } } });
     await app.close();
@@ -198,6 +200,44 @@ describe.skipIf(!dbAvailable)("gestión de familias (admin)", () => {
     const d = res.json().data;
     expect(d.families.total).toBeGreaterThanOrEqual(1);
     expect(d.students.total).toBeGreaterThanOrEqual(1);
+  });
+
+  test("crear familia con materias inscritas (subjectIds) atómico; materia mala → nada creado", async () => {
+    const subject = await db.subject.create({ data: { name: `Mat-${uniq}` } });
+    const created = await call("POST", "/admin/families", adminToken, {
+      name: "Con materias",
+      parent: {
+        email: `pm-${uniq}@piensa.test`,
+        password: "clave-temporal-123",
+      },
+      students: [
+        { name: "Z", avatar: "fox", pin: "2468", subjectIds: [subject.id] },
+      ],
+    });
+    expect(created.statusCode).toBe(201);
+    const newStudentId = created.json().data.students[0].id;
+    const enrolled = await db.studentSubject.findMany({
+      where: { studentProfileId: newStudentId },
+    });
+    expect(enrolled).toHaveLength(1);
+
+    // subjectId inválido → VALIDATION_ERROR, nada creado (transacción).
+    const bad = await call("POST", "/admin/families", adminToken, {
+      name: "Mala",
+      parent: {
+        email: `pmb-${uniq}@piensa.test`,
+        password: "clave-temporal-123",
+      },
+      students: [
+        { name: "W", avatar: "cat", pin: "1357", subjectIds: [randomUUID()] },
+      ],
+    });
+    expect(bad.statusCode).toBe(400);
+    const gone = await call("POST", "/auth/login", undefined, {
+      email: `pmb-${uniq}@piensa.test`,
+      password: "clave-temporal-123",
+    });
+    expect(gone.statusCode).toBe(401);
   });
 
   test("no-admin → FORBIDDEN", async () => {

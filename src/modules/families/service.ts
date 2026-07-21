@@ -12,6 +12,7 @@ export interface StudentInput {
   avatar: string;
   pin: string;
   gradeId?: string;
+  subjectIds?: string[];
 }
 export interface CreateFamilyInput {
   name: string;
@@ -45,6 +46,14 @@ async function hashedStudents(students: StudentInput[]) {
       avatar: s.avatar,
       pinHash: await hashPassword(s.pin),
       gradeId: s.gradeId,
+      // Inscripción a materias (Milestone 2.5, ISSUE-38), en la misma transacción.
+      ...(s.subjectIds && s.subjectIds.length > 0
+        ? {
+            subjects: {
+              create: s.subjectIds.map((id) => ({ subjectId: id })),
+            },
+          }
+        : {}),
     })),
   );
 }
@@ -77,7 +86,10 @@ export async function createFamily(
     if (isPrismaError(err, "P2002"))
       throw new AppError("CONFLICT", "El email del padre ya está en uso.");
     if (isPrismaError(err, "P2003"))
-      throw new AppError("VALIDATION_ERROR", "El grado indicado no existe.");
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "El grado o alguna materia indicada no existe.",
+      );
     throw err;
   }
 }
@@ -96,13 +108,23 @@ export async function addStudent(
         avatar: input.avatar,
         pinHash,
         gradeId: input.gradeId,
+        ...(input.subjectIds && input.subjectIds.length > 0
+          ? {
+              subjects: {
+                create: input.subjectIds.map((id) => ({ subjectId: id })),
+              },
+            }
+          : {}),
       },
       select: studentSelect,
     });
   } catch (err) {
-    // familyId ya se verificó en la ruta (NOT_FOUND); acá solo puede ser el grado.
+    // familyId ya se verificó en la ruta (NOT_FOUND); acá el grado o una materia.
     if (isPrismaError(err, "P2003"))
-      throw new AppError("VALIDATION_ERROR", "El grado indicado no existe.");
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "El grado o alguna materia indicada no existe.",
+      );
     throw err;
   }
 }
