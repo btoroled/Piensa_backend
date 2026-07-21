@@ -28,6 +28,12 @@ const studentSchema = {
     avatar: { type: "string", minLength: 1, maxLength: 100 },
     pin: { type: "string", pattern: PIN_PATTERN },
     gradeId: { type: "string", pattern: UUID_PATTERN },
+    subjectIds: {
+      type: "array",
+      maxItems: 50,
+      uniqueItems: true,
+      items: { type: "string", pattern: UUID_PATTERN },
+    },
   },
 } as const;
 
@@ -76,6 +82,7 @@ interface StudentBody {
   avatar: string;
   pin: string;
   gradeId?: string;
+  subjectIds?: string[];
 }
 interface CreateFamilyBody {
   name: string;
