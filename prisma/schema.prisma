@@ -45,6 +45,22 @@ enum LessonType {
   quiz
 }
 
+// Razón de un evento de XP (ISSUE-19/25). Enum: la DB garantiza que el libro de
+// XP solo tenga razones válidas (integridad del conteo auditable).
+enum XpReason {
+  lesson_complete
+  quiz_passed
+  quiz_attempt
+}
+
+// Nivel de maestría por topic (ISSUE-19/28).
+enum MasteryLevel {
+  attempted
+  familiar
+  proficient
+  mastered
+}
+
 // Cuenta con credenciales: administrador de la plataforma o padre de familia.
 model User {
   id           String     @id @default(uuid()) @db.Uuid
@@ -135,6 +151,14 @@ model StudentProfile {
   // Materias en las que está inscrito el alumno (Milestone 2.5).
   subjects StudentSubject[]
 
+  // Progreso y juego (ISSUE-19): todo cascada al borrar el alumno.
+  lessonProgress LessonProgress[]
+  quizAttempts   QuizAttempt[]
+  xpEvents       XPEvent[]
+  streak         Streak?
+  badgeAwards    BadgeAward[]
+  topicMastery   TopicMastery[]
+
   @@index([familyId])
   @@index([gradeId])
 }
@@ -187,6 +211,7 @@ model Course {
   // Prerrequisitos salientes de este curso y cursos que lo requieren.
   prerequisites CoursePrerequisite[] @relation("CourseToPrereq")
   requiredBy    CoursePrerequisite[] @relation("PrereqToCourse")
+  xpEvents      XPEvent[]
 
   @@unique([subjectId, gradeId])
   @@index([subjectId])
@@ -252,9 +277,11 @@ model Lesson {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  week      Week          @relation(fields: [weekId], references: [id], onDelete: Restrict)
+  week      Week             @relation(fields: [weekId], references: [id], onDelete: Restrict)
   questions Question[]
   topics    LessonTopic[]
+  progress  LessonProgress[]
+  attempts  QuizAttempt[]
 
   @@unique([weekId, order])
   @@index([weekId])
@@ -294,6 +321,7 @@ model Topic {
 
   lessons   LessonTopic[]
   questions QuestionTopic[]
+  mastery   TopicMastery[]
 }
 
 // Etiquetado Lesson↔Topic (join explícito). Cascade hacia la lección (el link es
@@ -320,5 +348,116 @@ model QuestionTopic {
   topic    Topic    @relation(fields: [topicId], references: [id], onDelete: Restrict)
 
   @@id([questionId, topicId])
+  @@index([topicId])
+}
+
+// ── Progreso y juego (Spec §4, ISSUE-19) ────────────────────────────────────
+// Libro de eventos (append-only para XP), no contadores editables. Todo cuelga
+// del alumno con Cascade: borrar un alumno se lleva su progreso (datos derivados).
+
+// Lección completada por un alumno. Único por (alumno, lección).
+model LessonProgress {
+  id               String   @id @default(uuid()) @db.Uuid
+  studentProfileId String   @db.Uuid
+  lessonId         String   @db.Uuid
+  completedAt      DateTime @default(now())
+
+  student StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  lesson  Lesson         @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([studentProfileId, lessonId])
+  @@index([studentProfileId])
+  @@index([lessonId])
+}
+
+// Intento de quiz (todos los intentos). Guarda qué se preguntó/respondió y el puntaje.
+model QuizAttempt {
+  id               String   @id @default(uuid()) @db.Uuid
+  studentProfileId String   @db.Uuid
+  lessonId         String   @db.Uuid
+  answers          Json
+  score            Int
+  maxScore         Int
+  createdAt        DateTime @default(now())
+
+  student StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  lesson  Lesson         @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([studentProfileId])
+  @@index([lessonId])
+}
+
+// Libro mayor de XP: solo inserción, nunca update/delete (lo hace cumplir el
+// módulo xp, ISSUE-25). Idempotente por (alumno, reason, refId). courseId etiqueta
+// el curso (M2.5); SetNull si el curso se borra (preserva el total auditable).
+model XPEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  studentProfileId String   @db.Uuid
+  amount           Int
+  reason           XpReason
+  refId            String
+  courseId         String?  @db.Uuid
+  createdAt        DateTime @default(now())
+
+  student StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  course  Course?        @relation(fields: [courseId], references: [id], onDelete: SetNull)
+
+  @@unique([studentProfileId, reason, refId])
+  @@index([studentProfileId])
+  @@index([courseId])
+}
+
+// Racha del alumno (una por alumno). Zona horaria y lógica en ISSUE-26.
+model Streak {
+  id               String    @id @default(uuid()) @db.Uuid
+  studentProfileId String    @unique @db.Uuid
+  current          Int       @default(0)
+  longest          Int       @default(0)
+  lastActivityDate DateTime? @db.Date
+  updatedAt        DateTime  @updatedAt
+
+  student StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+}
+
+// Catálogo de insignias (criterios declarativos JSON, evaluados en ISSUE-27).
+model Badge {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  name        String
+  description String
+  criteria    Json
+  createdAt   DateTime @default(now())
+
+  awards BadgeAward[]
+}
+
+// Otorgamiento de una insignia a un alumno. Único por (alumno, insignia).
+model BadgeAward {
+  id               String   @id @default(uuid()) @db.Uuid
+  studentProfileId String   @db.Uuid
+  badgeId          String   @db.Uuid
+  awardedAt        DateTime @default(now())
+
+  student StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  badge   Badge          @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([studentProfileId, badgeId])
+  @@index([studentProfileId])
+  @@index([badgeId])
+}
+
+// Maestría por topic (recalculada tras cada quiz, ISSUE-28). Único por (alumno, topic).
+model TopicMastery {
+  id               String       @id @default(uuid()) @db.Uuid
+  studentProfileId String       @db.Uuid
+  topicId          String       @db.Uuid
+  level            MasteryLevel
+  updatedAt        DateTime     @updatedAt
+
+  student StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  topic   Topic          @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([studentProfileId, topicId])
+  @@index([studentProfileId])
   @@index([topicId])
 }
