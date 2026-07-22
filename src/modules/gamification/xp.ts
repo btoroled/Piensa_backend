@@ -2,7 +2,7 @@
 // insertan (idempotentes por (studentProfileId, reason, refId)); nunca se
 // actualizan ni borran (lo garantiza tests/gamification/xp-append-only.test.ts).
 
-import type { PrismaClient, XPEvent, XpReason } from "@prisma/client";
+import type { Prisma, XPEvent, XpReason } from "@prisma/client";
 import { isPrismaError } from "../../lib/prisma-errors.js";
 
 /** XP base de la curva v1. umbral(N) = LEVEL_XP_STEP · N · (N+1) / 2. */
@@ -18,7 +18,7 @@ export function getLevel(totalXp: number): number {
 /** Registra un evento de XP. Idempotente por (studentProfileId, reason, refId):
  *  si ya existe, no inserta y devuelve created:false con el evento previo. */
 export async function append(
-  db: PrismaClient,
+  db: Prisma.TransactionClient,
   studentProfileId: string,
   amount: number,
   reason: XpReason,
@@ -27,6 +27,14 @@ export async function append(
 ): Promise<{ event: XPEvent; created: boolean }> {
   if (amount <= 0)
     throw new Error(`XP amount debe ser positivo (recibí ${amount})`);
+  const key = {
+    studentProfileId_reason_refId: { studentProfileId, reason, refId },
+  };
+  // Corto-circuito: si ya existe, no intentamos crear. Esto además hace la
+  // función segura dentro de una transacción de Postgres (un P2002 atrapado
+  // aborta la transacción; evitando el INSERT en el caso repetido, no ocurre).
+  const existing = await db.xPEvent.findUnique({ where: key });
+  if (existing) return { event: existing, created: false };
   try {
     const event = await db.xPEvent.create({
       data: {
@@ -40,11 +48,7 @@ export async function append(
     return { event, created: true };
   } catch (err) {
     if (isPrismaError(err, "P2002")) {
-      const event = await db.xPEvent.findUniqueOrThrow({
-        where: {
-          studentProfileId_reason_refId: { studentProfileId, reason, refId },
-        },
-      });
+      const event = await db.xPEvent.findUniqueOrThrow({ where: key });
       return { event, created: false };
     }
     throw err;
@@ -53,7 +57,7 @@ export async function append(
 
 /** XP total acumulado del alumno (todos los eventos). */
 export async function getTotal(
-  db: PrismaClient,
+  db: Prisma.TransactionClient,
   studentProfileId: string,
 ): Promise<number> {
   const r = await db.xPEvent.aggregate({
@@ -65,7 +69,7 @@ export async function getTotal(
 
 /** XP por curso (excluye eventos sin curso). Mapa courseId → total. */
 export async function getCourseTotals(
-  db: PrismaClient,
+  db: Prisma.TransactionClient,
   studentProfileId: string,
 ): Promise<Record<string, number>> {
   const rows = await db.xPEvent.groupBy({
