@@ -2,7 +2,7 @@
 // de dominio del alumno por topic usando las respuestas a preguntas de ese topic
 // en los últimos MASTERY_WINDOW intentos que lo tocan. El nivel puede bajar.
 
-import type { MasteryLevel, PrismaClient, TopicMastery } from "@prisma/client";
+import type { MasteryLevel, Prisma, TopicMastery } from "@prisma/client";
 
 /** Cuántos intentos recientes (que tocan el topic) entran en la ventana. */
 export const MASTERY_WINDOW = 10;
@@ -57,7 +57,7 @@ function parseOutcomes(answers: unknown): Outcome[] {
  *  de las respuestas a preguntas de ese topic, clasifica y hace upsert (puede
  *  bajar el nivel). Devuelve las maestrías actualizadas. */
 export async function recalculate(
-  db: PrismaClient,
+  db: Prisma.TransactionClient,
   studentProfileId: string,
   topicIds: string[],
 ): Promise<TopicMastery[]> {
