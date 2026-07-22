@@ -30,3 +30,90 @@ export function classify(correct: number, total: number): MasteryLevel | null {
   }
   return null;
 }
+
+interface Outcome {
+  questionId: string;
+  correct: boolean;
+}
+
+/** Contrato con ISSUE-24: `QuizAttempt.answers` es un array de respuestas con al
+ *  menos { questionId, correct }. Fail-closed: lo que no calce, se ignora. */
+function parseOutcomes(answers: unknown): Outcome[] {
+  if (!Array.isArray(answers)) return [];
+  const out: Outcome[] = [];
+  for (const a of answers) {
+    if (a && typeof a === "object") {
+      const q = (a as Record<string, unknown>).questionId;
+      const c = (a as Record<string, unknown>).correct;
+      if (typeof q === "string" && typeof c === "boolean")
+        out.push({ questionId: q, correct: c });
+    }
+  }
+  return out;
+}
+
+/** Recalcula la maestría del alumno en `topicIds` tras un quiz. Para cada topic:
+ *  toma los últimos MASTERY_WINDOW intentos que lo tocan, cuenta aciertos/total
+ *  de las respuestas a preguntas de ese topic, clasifica y hace upsert (puede
+ *  bajar el nivel). Devuelve las maestrías actualizadas. */
+export async function recalculate(
+  db: PrismaClient,
+  studentProfileId: string,
+  topicIds: string[],
+): Promise<TopicMastery[]> {
+  const targets = [...new Set(topicIds)];
+  if (targets.length === 0) return [];
+
+  // Intentos del alumno, más recientes primero, con sus respuestas.
+  const attempts = await db.quizAttempt.findMany({
+    where: { studentProfileId },
+    orderBy: { createdAt: "desc" },
+    select: { answers: true },
+  });
+  const parsed = attempts.map((a) => parseOutcomes(a.answers));
+
+  // Topics (de los buscados) de cada pregunta respondida.
+  const questionIds = [...new Set(parsed.flat().map((o) => o.questionId))];
+  const links = questionIds.length
+    ? await db.questionTopic.findMany({
+        where: { questionId: { in: questionIds }, topicId: { in: targets } },
+        select: { questionId: true, topicId: true },
+      })
+    : [];
+  const topicsByQuestion = new Map<string, Set<string>>();
+  for (const l of links) {
+    const set = topicsByQuestion.get(l.questionId) ?? new Set<string>();
+    set.add(l.topicId);
+    topicsByQuestion.set(l.questionId, set);
+  }
+
+  const results: TopicMastery[] = [];
+  for (const topicId of targets) {
+    let correct = 0;
+    let total = 0;
+    let seen = 0;
+    for (const outcomes of parsed) {
+      const touches = outcomes.some((o) =>
+        topicsByQuestion.get(o.questionId)?.has(topicId),
+      );
+      if (!touches) continue;
+      for (const o of outcomes) {
+        if (topicsByQuestion.get(o.questionId)?.has(topicId)) {
+          total++;
+          if (o.correct) correct++;
+        }
+      }
+      if (++seen >= MASTERY_WINDOW) break;
+    }
+
+    const level = classify(correct, total);
+    if (!level) continue;
+    const saved = await db.topicMastery.upsert({
+      where: { studentProfileId_topicId: { studentProfileId, topicId } },
+      create: { studentProfileId, topicId, level },
+      update: { level },
+    });
+    results.push(saved);
+  }
+  return results;
+}
