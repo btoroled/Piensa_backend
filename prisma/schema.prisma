@@ -112,6 +112,8 @@ model Family {
   name         String
   status       FamilyStatus @default(active)
   adminNote    String?
+  // Zona horaria IANA de la familia; las rachas se calculan en este huso (ISSUE-26).
+  timezone     String       @default("America/Lima")
   parentUserId String       @db.Uuid
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
