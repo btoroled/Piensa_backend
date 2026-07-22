@@ -26,6 +26,7 @@ import { subjectsCoursesRoutes } from "./modules/catalog/subjects-courses-routes
 import { studentsRoutes } from "./modules/families/students-routes.js";
 import { pathRoutes } from "./modules/progress/path-routes.js";
 import { lessonRoutes } from "./modules/progress/lesson-routes.js";
+import { quizRoutes } from "./modules/progress/quiz-routes.js";
 import { summaryRoutes } from "./modules/progress/summary-routes.js";
 import { getPrisma } from "./lib/prisma.js";
 
@@ -60,7 +61,9 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
     // propiedad desconocida se rechace con VALIDATION_ERROR en vez de eliminarse
     // en silencio. `coerceTypes` sigue activo (Fastify lo necesita para
     // params/query), por eso los campos sensibles se validan con `pattern`.
-    ajv: { customOptions: { removeAdditional: false } },
+    // `allowUnionTypes` habilita `type: [...]` (p. ej. el `answer` de un intento
+    // de quiz, que puede ser string/number/boolean según el tipo de pregunta).
+    ajv: { customOptions: { removeAdditional: false, allowUnionTypes: true } },
   });
 
   const jwtSecret = opts.jwtSecret ?? INSECURE_TEST_SECRET;
@@ -147,6 +150,7 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   );
   app.register(
     async (scope) => {
+      await quizRoutes(scope, { prisma, jwtSecret });
       await summaryRoutes(scope, { prisma, jwtSecret });
     },
     { prefix: "/api/v1" },

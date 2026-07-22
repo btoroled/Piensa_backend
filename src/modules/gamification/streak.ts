@@ -2,7 +2,7 @@
 // zona horaria de la familia (no UTC), derivada con Intl (DST-safe). Mismo día
 // local → sin cambio; día siguiente → +1; brecha ≥2 días → reinicia a 1.
 
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 /** Zona horaria por defecto (Perú) si la familia no tiene una válida. */
 export const DEFAULT_TIMEZONE = "America/Lima";
@@ -43,7 +43,7 @@ function dayDiff(a: string, b: string): number {
 
 /** Zona horaria de la familia del alumno (default si es inválida o falta). */
 export async function familyTimezoneForStudent(
-  db: PrismaClient,
+  db: Prisma.TransactionClient,
   studentProfileId: string,
 ): Promise<string> {
   const student = await db.studentProfile.findUniqueOrThrow({
@@ -58,7 +58,7 @@ export async function familyTimezoneForStudent(
  *  Mismo día local → sin cambio; día siguiente → +1; brecha ≥2 → reinicia a 1.
  *  Si `timezone` es inválida, cae al default (nunca revienta la actividad). */
 export async function recordActivity(
-  db: PrismaClient,
+  db: Prisma.TransactionClient,
   studentProfileId: string,
   timezone: string,
   now: Date = new Date(),

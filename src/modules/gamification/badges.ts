@@ -3,7 +3,7 @@
 // alumno. `evaluate` barre el catálogo y otorga las que faltan y cumplen —
 // idempotente (unique en BD) y retroactivo (lee estado actual, p. ej. longest).
 
-import type { Badge, Prisma, PrismaClient } from "@prisma/client";
+import type { Badge, Prisma } from "@prisma/client";
 import { isPrismaError } from "../../lib/prisma-errors.js";
 
 /** Criterio declarativo de una insignia (unión discriminada por `type`). */
@@ -14,7 +14,7 @@ export type Criteria =
   | { type: "streak"; days: number };
 
 type PredicateFn = (
-  db: PrismaClient,
+  db: Prisma.TransactionClient,
   studentProfileId: string,
   criteria: Record<string, unknown>,
 ) => Promise<boolean>;
@@ -72,7 +72,7 @@ const PREDICATES: Record<string, PredicateFn> = {
 /** True si el alumno cumple el criterio. Fail-closed: criterio malformado o de
  *  tipo desconocido → false; un error del predicado nunca revienta la actividad. */
 export async function criteriaMet(
-  db: PrismaClient,
+  db: Prisma.TransactionClient,
   studentProfileId: string,
   criteria: unknown,
 ): Promise<boolean> {
@@ -91,7 +91,7 @@ export async function criteriaMet(
 /** Evalúa todo el catálogo y otorga las insignias faltantes cuyo criterio se
  *  cumple. Devuelve las recién otorgadas. Idempotente (insert-catch-P2002). */
 export async function evaluate(
-  db: PrismaClient,
+  db: Prisma.TransactionClient,
   studentProfileId: string,
 ): Promise<Badge[]> {
   const [badges, existing] = await Promise.all([
@@ -160,7 +160,7 @@ export const V1_BADGES: {
 ];
 
 /** Siembra (idempotente, upsert por code) el catálogo v1. */
-export async function seedBadges(db: PrismaClient): Promise<void> {
+export async function seedBadges(db: Prisma.TransactionClient): Promise<void> {
   for (const b of V1_BADGES) {
     const criteria = b.criteria as Prisma.InputJsonValue;
     await db.badge.upsert({
