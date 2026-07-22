@@ -1,0 +1,19 @@
+# Reverse proxy TLS del stack de producción (Spec §3, §6).
+# SITE_ADDRESS define el dominio: en el VPS un dominio real (Caddy pide el
+# certificado por ACME automáticamente); en local `localhost` (Caddy usa su CA
+# interna). Único servicio con puertos publicados: 80 y 443.
+{$SITE_ADDRESS:localhost} {
+	encode zstd gzip
+
+	# Headers de seguridad (Spec §6): HSTS, nosniff, frame-deny.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	# La API escucha en el puerto 3000 dentro de la red interna de Docker.
+	reverse_proxy api:3000
+}
