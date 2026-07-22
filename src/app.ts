@@ -24,6 +24,7 @@ import {
 import { familiesRoutes } from "./modules/families/routes.js";
 import { subjectsCoursesRoutes } from "./modules/catalog/subjects-courses-routes.js";
 import { studentsRoutes } from "./modules/families/students-routes.js";
+import { pathRoutes } from "./modules/progress/path-routes.js";
 import { getPrisma } from "./lib/prisma.js";
 
 export interface BuildAppOptions {
@@ -127,6 +128,12 @@ export function buildApp(opts: BuildAppOptions = {}): FastifyInstance {
   app.register(
     async (scope) => {
       await studentsRoutes(scope, { prisma, jwtSecret });
+    },
+    { prefix: "/api/v1" },
+  );
+  app.register(
+    async (scope) => {
+      await pathRoutes(scope, { prisma, jwtSecret });
     },
     { prefix: "/api/v1" },
   );
