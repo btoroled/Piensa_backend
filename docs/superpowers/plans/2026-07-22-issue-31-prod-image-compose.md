@@ -326,11 +326,19 @@ Expected: `{"data":{"status":"ok"}}` (Caddy sirve HTTPS con su CA interna; `-k` 
 
 - [ ] **Step 7: Verificar que PostgreSQL NO es alcanzable desde el host (criterio de aceptación)**
 
-Run: `docker compose -f docker-compose.prod.yml port postgres 5432; echo "exit=$?"`
-Expected: no imprime ningún mapeo de puerto (el servicio no publica 5432) — confirma el aislamiento.
+La prueba autoritativa es que Docker no publicó ningún puerto del servicio `postgres`
+(no depende de qué más corra en el host):
 
-Run (confirmación adicional): `nc -z -w2 localhost 5432; echo "nc exit=$?"`
-Expected: `nc exit=1` (conexión rechazada: nada escucha 5432 en el host).
+Run: `docker compose -f docker-compose.prod.yml --env-file .env.prod port postgres 5432; echo "exit=$?"`
+Expected: no imprime ningún mapeo `0.0.0.0:...->5432` (a lo sumo `invalid IP:0`) — el servicio no publica 5432.
+
+Run: `docker inspect piensa-postgres-prod --format '{{json .NetworkSettings.Ports}}'`
+Expected: `{"5432/tcp":null}` — `null` = sin binding al host. `docker ps` lo muestra como `5432/tcp` (expuesto en la red de Docker), nunca `0.0.0.0:5432->5432/tcp` (publicado).
+
+> **No uses `nc -z localhost 5432` como prueba de aislamiento.** Da falso positivo si
+> el host ya corre otro Postgres (p. ej. `postgresql@16/@17` de Homebrew ocupando 5432):
+> `nc` conectaría a ese servicio ajeno, no al contenedor. Los dos comandos de arriba son
+> los que prueban el criterio de forma fiable.
 
 - [ ] **Step 8: Bajar el stack y limpiar el `.env.prod` de prueba**
 
