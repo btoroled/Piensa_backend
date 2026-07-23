@@ -22,7 +22,7 @@ services:
       retries: 5
 
   migrate:
-    image: piensa-backend:local
+    image: ${API_IMAGE:-piensa-backend:local}
     build: .
     env_file: .env.prod
     command: ["npx", "prisma", "migrate", "deploy"]
@@ -32,7 +32,7 @@ services:
     restart: "no"
 
   api:
-    image: piensa-backend:local
+    image: ${API_IMAGE:-piensa-backend:local}
     build: .
     container_name: piensa-api-prod
     restart: unless-stopped
