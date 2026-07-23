@@ -52,13 +52,24 @@
 
 En los servicios `migrate` y `api`, cambiar la línea `image: piensa-backend:local` por `image: ${API_IMAGE:-piensa-backend:local}` (dejar `build: .` intacto). Así, sin `API_IMAGE`, se usa el build local (ISSUE-31 sigue funcionando); con `API_IMAGE` definido, se usa esa imagen.
 
-Verificar con compose config:
+Verificar con compose config. El directivo `env_file: .env.prod` de los servicios
+exige que ese archivo exista (aunque `--env-file` alimente la interpolación), así
+que se crea uno temporal para el chequeo:
 
-Run: `API_IMAGE=ghcr.io/acme/piensa-backend:abc123 docker compose -f docker-compose.prod.yml --env-file .env.prod.example config | grep -A1 -E "^  (api|migrate):"`
-Expected: bajo `api` y `migrate` aparece `image: ghcr.io/acme/piensa-backend:abc123`.
+Run:
 
-Run (fallback local): `docker compose -f docker-compose.prod.yml --env-file .env.prod.example config | grep "image: piensa-backend:local"`
-Expected: sin `API_IMAGE`, resuelve a `piensa-backend:local`.
+```bash
+cp .env.prod.example .env.prod && chmod 600 .env.prod
+echo "con API_IMAGE:"
+API_IMAGE=ghcr.io/acme/piensa-backend:abc123 docker compose -f docker-compose.prod.yml --env-file .env.prod config | grep -E "^    image:"
+echo "sin API_IMAGE (fallback):"
+docker compose -f docker-compose.prod.yml --env-file .env.prod config | grep -E "^    image:"
+rm -f .env.prod
+```
+
+Expected: con `API_IMAGE`, `migrate` y `api` muestran `image: ghcr.io/acme/piensa-backend:abc123`
+(junto a `postgres:17-alpine` y `caddy:2-alpine`); sin `API_IMAGE`, ambos resuelven a
+`piensa-backend:local`.
 
 - [ ] **Step 2: Escribir `scripts/deploy-remote.sh`**
 
@@ -305,10 +316,10 @@ Push a `main` → `CI` verde → `Deploy`:
 
 ## Rollback
 ```bash
-# En el VPS, desplegar un SHA anterior conocido:
+# En el VPS, desplegar un SHA anterior conocido (el script exporta API_IMAGE
+# a partir del arg, no hace falta pasarlo dos veces):
 cd /home/deploy/piensa-backend
-API_IMAGE=ghcr.io/<owner>/piensa-backend:<sha-anterior> \
-  ./scripts/deploy-remote.sh ghcr.io/<owner>/piensa-backend:<sha-anterior>
+./scripts/deploy-remote.sh ghcr.io/<owner>/piensa-backend:<sha-anterior>
 ```
 Las migraciones de Prisma son forward-only: un rollback de imagen que requiera
 revertir schema necesita una migración de reversión dedicada (no bajar el schema
