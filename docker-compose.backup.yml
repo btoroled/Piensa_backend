@@ -1,0 +1,31 @@
+# Servicio de backup (ISSUE-32). Se conecta a la red del compose de producción
+# (external) para alcanzar `postgres`. Levantar junto a producción:
+#   docker compose -f docker-compose.backup.yml --env-file .env.backup up -d
+# Backup manual inmediato (perfil oneshot):
+#   docker compose -f docker-compose.backup.yml --env-file .env.backup \
+#     run --rm oneshot /usr/local/bin/backup.sh
+services:
+  backup:
+    build: ./docker/backup
+    image: piensa-backup:local
+    container_name: piensa-backup
+    restart: unless-stopped
+    env_file: .env.backup
+    networks:
+      - piensa_prod
+
+  # Mismo binario, sin cron: para correr un backup/restore manual.
+  oneshot:
+    build: ./docker/backup
+    image: piensa-backup:local
+    profiles: ["oneshot"]
+    env_file: .env.backup
+    entrypoint: []
+    networks:
+      - piensa_prod
+
+networks:
+  # Red creada por docker-compose.prod.yml (proyecto por defecto: piensa-backend).
+  piensa_prod:
+    external: true
+    name: piensa-backend_default

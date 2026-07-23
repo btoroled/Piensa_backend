@@ -1,0 +1,2 @@
+# Backup diario a las 03:00 UTC (Spec §3). Formato supercronic (5 campos).
+0 3 * * * /usr/local/bin/backup.sh
