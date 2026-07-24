@@ -222,7 +222,8 @@ export const familiesRoutes: FastifyPluginAsync<FamiliesRoutesOptions> = async (
     },
   );
 
-  // Overview: conteos de familias y alumnos (sin actividad, diferida a M3).
+  // Overview: conteos de familias/alumnos + alumnos activos últimos 7 días
+  // (ISSUE-18 + follow-up M3).
   app.get("/admin/overview", { preHandler: adminOnly }, async () => ({
     data: await getOverview(prisma),
   }));

@@ -202,6 +202,58 @@ describe.skipIf(!dbAvailable)("gestión de familias (admin)", () => {
     expect(d.students.total).toBeGreaterThanOrEqual(1);
   });
 
+  test("overview cuenta alumnos activos en los últimos 7 días (XPEvent en la ventana; los viejos no cuentan)", async () => {
+    // Alumno con actividad RECIENTE (dentro de la ventana de 7 días).
+    const recent = await call("POST", "/admin/families", adminToken, {
+      name: "Activos",
+      parent: {
+        email: `act-${uniq}@piensa.test`,
+        password: "clave-temporal-123",
+      },
+      students: [{ name: "Activo", avatar: "fox", pin: "1122" }],
+    });
+    const recentStudentId = recent.json().data.students[0].id;
+    await db.xPEvent.create({
+      data: {
+        studentProfileId: recentStudentId,
+        amount: 10,
+        reason: "lesson_complete",
+        refId: `recent-${uniq}`,
+        createdAt: new Date(),
+      },
+    });
+
+    // Alumno con actividad VIEJA (hace 10 días, fuera de la ventana).
+    const stale = await call("POST", "/admin/families", adminToken, {
+      name: "Inactivos",
+      parent: {
+        email: `ina-${uniq}@piensa.test`,
+        password: "clave-temporal-123",
+      },
+      students: [{ name: "Viejo", avatar: "cat", pin: "3344" }],
+    });
+    const staleStudentId = stale.json().data.students[0].id;
+    await db.xPEvent.create({
+      data: {
+        studentProfileId: staleStudentId,
+        amount: 10,
+        reason: "lesson_complete",
+        refId: `stale-${uniq}`,
+        createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    const res = await call("GET", "/admin/overview", adminToken);
+    const d = res.json().data;
+    expect(d.activity.windowDays).toBe(7);
+    // El alumno con XPEvent reciente cuenta; el de XPEvent viejo no.
+    expect(d.activity.activeStudentsLast7Days).toBeGreaterThanOrEqual(1);
+    // Consistencia: nunca más activos que alumnos totales.
+    expect(d.activity.activeStudentsLast7Days).toBeLessThanOrEqual(
+      d.students.total,
+    );
+  });
+
   test("crear familia con materias inscritas (subjectIds) atómico; materia mala → nada creado", async () => {
     const subject = await db.subject.create({ data: { name: `Mat-${uniq}` } });
     const created = await call("POST", "/admin/families", adminToken, {

@@ -17,7 +17,7 @@
 
 ## Tablero de estado
 
-> Mantenido **únicamente por docs-agent** según los reportes del equipo. Última actualización: 2026-07-17.
+> Mantenido **únicamente por docs-agent** según los reportes del equipo. Última actualización: 2026-07-23.
 > Estados: ⚪ Pendiente · 🟡 En progreso · 🔵 En revisión · ✅ Completado · 🔴 Bloqueado
 
 | Issue | Estado | Responsable | Nota |
@@ -32,8 +32,35 @@
 | ISSUE-08 Sesión de alumno por PIN | ✅ Completado | impl · review OK | PR #8 · mergeado a `main` (2026-07-17) · criterios 3/3 · token role `student` (studentProfileId+familyId, 15 min) · pertenencia contra BD → `FORBIDDEN` uniforme (ajeno/inexistente) · bloqueo PIN 5 fallos/15 min, reset con acierto tras desbloqueo · `INVALID_PIN` uniforme (incorrecto/bloqueado) · 25 tests + 3 de integración en CI |
 | ISSUE-09 Autorización por rol y pertenencia | ✅ Completado | impl · review OK | PR #9 · mergeado a `main` (2026-07-17) · criterios 3/3 · primitivas `authenticate` / `requireRole` / `requireStudentOwnership` (preHandlers) · pertenencia contra BD (familia del padre desde BD, no del claim) · matriz rol×endpoint extensible · refactor de `/auth/student-session` a las primitivas · 15 tests de matriz + 4 de pertenencia en CI |
 | ISSUE-10 Suspensión de familia efectiva de inmediato | ✅ Completado | impl · review OK | PR #10 · CI verde (pendiente de merge) · criterios 2/2 · `authenticate` lee `Family.status` en cada request autenticado de padre/alumno → `FAMILY_SUSPENDED` con token aún vigente · admin exento (sin familyId) · reactivar restaura acceso, sin borrar datos · unitario con stub + integración end-to-end en CI |
-| ISSUE-11 … ISSUE-34 | ⚪ Pendiente | — | ver cuerpos abajo; respetar `Depende de:` |
-| ISSUE-35 Rol super_admin | ⚪ Pendiente | — | **nuevo** (2026-07-17); se implementa entre ISSUE-12 e ISSUE-13 (secuencia de Milestone 2) |
+| ISSUE-11 Rate limiting | ✅ Completado | impl · review OK | mergeado a `main` · `/auth/login` y `/auth/student-session` con límite estricto + global por IP → `RATE_LIMITED` |
+| ISSUE-12 Modelo del catálogo | ✅ Completado | impl · review OK | mergeado a `main` · Grade/Week/Lesson/Question/Topic + etiquetado · constraints de tipo y `order` único por test |
+| ISSUE-35 Rol super_admin | ✅ Completado | impl · review OK | mergeado a `main` · jerarquía en `requireRole` · creación por API fija rol `admin` · suspensión de admin → `ACCOUNT_SUSPENDED` · `src/lib/validation.ts` |
+| ISSUE-13 CRUD grados y semanas | ✅ Completado | impl · review OK | mergeado a `main` · CRUD `/admin/grades` y `/admin/weeks` · borrado con contenido rechazado |
+| ISSUE-14 CRUD lecciones + reorder | ✅ Completado | impl · review OK | mergeado a `main` · payload por tipo · reorder atómico (ID de otra semana → rechazo total) |
+| ISSUE-15 CRUD preguntas + registro de tipos | ✅ Completado | impl · review OK | mergeado a `main` · `questionTypeRegistry` (3 tipos v1) · punto de extensión probado por test |
+| ISSUE-16 Topics y etiquetado | ✅ Completado | impl · review OK | mergeado a `main` · CRUD `/admin/topics` + etiquetar/desetiquetar · borrar topic en uso → rechazo |
+| ISSUE-17 Uploads a R2 con URL firmada | ✅ Completado | impl · review OK | mergeado a `main` · allowlist de tipo/tamaño · URL firmada + `fileKey` · archivo nunca pasa por el VPS |
+| ISSUE-18 Familias y overview | ✅ Completado | impl · review OK | mergeado a `main` · CRUD familias, suspend/reactivate, `GET /admin/overview` · **bloque de actividad 7 días diferido a M3 → cerrado (2026-07-23)** |
+| ISSUE-36 Modelo materias/cursos/inscripción | ✅ Completado | impl · review OK | mergeado a `main` · Subject/Course/CoursePrerequisite/StudentSubject · `Week` movido a `courseId` |
+| ISSUE-37 CRUD materias y cursos | ✅ Completado | impl · review OK | mergeado a `main` · CRUD `/admin/subjects` y `/admin/courses` · prerequisito con ciclo → `VALIDATION_ERROR` |
+| ISSUE-38 Inscripción del alumno | ✅ Completado | impl · review OK | mergeado a `main` · año + materias por alumno · acceso "para abajo" (grade.level ≤ año) |
+| ISSUE-19 Modelo de progreso y juego | ✅ Completado | impl · review OK | mergeado a `main` · LessonProgress/QuizAttempt/XPEvent/Streak/Badge/BadgeAward/TopicMastery · XPEvent append-only por test |
+| ISSUE-20 Camino del alumno | ✅ Completado | impl · review OK | mergeado a `main` · `GET /me/path` por curso · desbloqueo en orden · sin N+1 |
+| ISSUE-21 Contenido de lección sin respuestas | ✅ Completado | impl · review OK | mergeado a `main` · `GET /lessons/:id` · `answerSpec` nunca serializado (test) · bloqueada → `FORBIDDEN` |
+| ISSUE-22 Completar video/lectura | ✅ Completado | impl · review OK | mergeado a `main` · `POST /lessons/:id/complete` idempotente · +10 XP · racha + insignias |
+| ISSUE-23 Motor de calificación por tipo | ✅ Completado | impl · review OK | mergeado a `main` · `grade()` puro por tipo v1 · malformada → incorrecta, nunca excepción · punto de extensión probado |
+| ISSUE-24 Enviar intento de quiz | ✅ Completado | impl · review OK | mergeado a `main` · `POST /quizzes/:id/attempts` · califica, persiste, XP no farmeable · `perQuestion` sin filtrar respuesta |
+| ISSUE-25 Motor de XP y niveles | ✅ Completado | impl · review OK | mergeado a `main` · `append` idempotente por `(reason,refId)` · curva de nivel documentada |
+| ISSUE-26 Rachas | ✅ Completado | impl · review OK | mergeado a `main` · `recordActivity` con timezone de la familia · cruce de medianoche cubierto (clock falso) |
+| ISSUE-27 Insignias | ✅ Completado | impl · review OK | mergeado a `main` · set v1 declarativo · otorgamiento idempotente · retroactivo por historial |
+| ISSUE-28 Maestría por topic | ✅ Completado | impl · review OK | mergeado a `main` · `recalculate` sobre últimos 10 intentos · umbrales documentados · el nivel puede bajar |
+| ISSUE-29 Resumen del alumno | ✅ Completado | impl · review OK | mergeado a `main` · `GET /me/summary` · XP/nivel/racha/insignias/maestría por bloque |
+| ISSUE-30 Endpoints del padre | ✅ Completado | impl · review OK | mergeado a `main` · `GET /family/students` y `/:id/progress` · pertenencia (reusa ISSUE-09) |
+| ISSUE-31 Imagen de prod + compose VPS | ✅ Completado | impl · review OK | mergeado a `main` (Milestone 4) · Dockerfile multi-stage no root · Caddy + Postgres aislado |
+| ISSUE-32 Backups cifrados a R2 | ✅ Completado | impl · review OK | mergeado a `main` (M4) · `pg_dump`→`age`→R2 · restore + prueba mensual · ciclo completo probado |
+| ISSUE-33 Hardening del VPS | ✅ Completado | impl · review OK | mergeado a `main` (M4) · `provision.sh` idempotente (ufw/SSH/fail2ban/Docker) · verificado en systemd |
+| ISSUE-34 Pipeline de deploy | ✅ Completado | impl · review OK | mergeado a `main` (M4) · `workflow_run` gated por CI → GHCR → VPS · health check post-deploy |
+| Follow-up overview (actividad 7 días) | ✅ Completado | impl | 2026-07-23 · bloque `activity.activeStudentsLast7Days` en `GET /admin/overview` · cierra el recorte de ISSUE-18 · sin migración |
 
 ---
 

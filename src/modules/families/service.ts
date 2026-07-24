@@ -129,14 +129,32 @@ export async function addStudent(
   }
 }
 
+// Ventana del panel de operación (follow-up de ISSUE-18, diferido a M3).
+// Documentada y ajustable, como el resto de las constantes del spec.
+const ACTIVITY_WINDOW_DAYS = 7;
+
 export async function getOverview(prisma: PrismaClient) {
-  const [active, suspended, students] = await Promise.all([
+  const since = new Date(
+    Date.now() - ACTIVITY_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+  );
+  const [active, suspended, students, activeGroups] = await Promise.all([
     prisma.family.count({ where: { status: "active" } }),
     prisma.family.count({ where: { status: "suspended" } }),
     prisma.studentProfile.count(),
+    // Distintos alumnos con al menos un XPEvent en la ventana. XPEvent es el
+    // libro de eventos append-only (spec §4): toda actividad que cuenta
+    // (completar lección, enviar quiz) emite uno, así que es la fuente directa.
+    prisma.xPEvent.groupBy({
+      by: ["studentProfileId"],
+      where: { createdAt: { gte: since } },
+    }),
   ]);
   return {
     families: { active, suspended, total: active + suspended },
     students: { total: students },
+    activity: {
+      activeStudentsLast7Days: activeGroups.length,
+      windowDays: ACTIVITY_WINDOW_DAYS,
+    },
   };
 }
